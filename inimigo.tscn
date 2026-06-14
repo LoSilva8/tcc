@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://civppsq5gmq0f"]
+[ext_resource type="Script" uid="uid://423bm4y8vbis" path="res://inimigo.gd" id="1_030df"]
+[node name="Inimigo" type="Node2D"]
+script = ExtResource("1_030df")
+[node name="ColorRect" type="ColorRect" parent="."]
+offset_left = -24.0
+offset_top = -24.0
+offset_right = 24.0
+offset_bottom = 24.0
+color = Color(0.8, 0.1, 0.1, 1)
+[node name="HPLabel" type="Label" parent="."]
+offset_left = -16.0
+offset_top = -40.0
+offset_right = 24.0
+offset_bottom = -17.0
+text = "❤ 3"

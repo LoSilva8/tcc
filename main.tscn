@@ -1,0 +1,75 @@
+[gd_scene format=3 uid="uid://cn4ogdtcl4j4e"]
+
+[ext_resource type="Script" uid="uid://i01r7pipoy6r" path="res://main.gd" id="1_0xm2m"]
+[ext_resource type="PackedScene" uid="uid://bsllswvmcoyjt" path="res://player.tscn" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://xyqvep7syqmc" path="res://mapa.gd" id="3_h2yge"]
+[ext_resource type="Script" uid="uid://cjfeoq086kr34" path="res://interpretador.gd" id="4_1bvp3"]
+[ext_resource type="Script" uid="uid://bh2c0bs77ig6b" path="res://gerenciador_inimigos.gd" id="6_7mycd"]
+
+[sub_resource type="TileSet" id="TileSet_1bvp3"]
+tile_size = Vector2i(64, 64)
+
+[node name="Main" type="Node2D" unique_id=1430742147]
+script = ExtResource("1_0xm2m")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=1941655884]
+tile_set = SubResource("TileSet_1bvp3")
+
+[node name="Player" parent="." unique_id=19314574 instance=ExtResource("1_ig7tw")]
+
+[node name="Camera2D" type="Camera2D" parent="Player" unique_id=250829711]
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=1848413761]
+
+[node name="PanelContainer" type="PanelContainer" parent="UI" unique_id=539401398]
+custom_minimum_size = Vector2(0, 120)
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/PanelContainer" unique_id=889105134]
+layout_mode = 2
+
+[node name="InputLine" type="LineEdit" parent="UI/PanelContainer/VBoxContainer" unique_id=590791559]
+layout_mode = 2
+placeholder_text = "\"Digite um comando Python... (ex: mover('direita')\" "
+
+[node name="HPContainer" type="HBoxContainer" parent="UI/PanelContainer/VBoxContainer" unique_id=1676276170]
+layout_mode = 2
+
+[node name="HPIcon" type="Label" parent="UI/PanelContainer/VBoxContainer/HPContainer" unique_id=683313933]
+layout_mode = 2
+text = "❤"
+
+[node name="HPBar" type="ProgressBar" parent="UI/PanelContainer/VBoxContainer/HPContainer" unique_id=920499391]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 10.0
+value = 10.0
+
+[node name="HPTexto" type="Label" parent="UI/PanelContainer/VBoxContainer/HPContainer" unique_id=1839210904]
+layout_mode = 2
+text = "10/10"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="UI/PanelContainer/VBoxContainer" unique_id=945231981]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="OutputLabel" type="Label" parent="UI/PanelContainer/VBoxContainer/ScrollContainer" unique_id=111403529]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 2
+
+[node name="Mapa" type="Node2D" parent="." unique_id=343877730]
+script = ExtResource("3_h2yge")
+
+[node name="Interpretador" type="Node" parent="." unique_id=1318359548]
+script = ExtResource("4_1bvp3")
+
+[node name="GerenciadorInimigos" type="Node2D" parent="." unique_id=1441872105]
+script = ExtResource("6_7mycd")
