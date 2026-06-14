@@ -10,6 +10,17 @@ signal jogador_na_saida
 
 # Pool de layouts possíveis — cada '#' é parede, '.' chão, 'E' saída
 var layouts = [
+	# Sala 0 — Tutorial (layout fixo e espaçoso para ensinar movimentação)
+	[
+		"#########",
+		"#.......#",
+		"#.......#",
+		"#.......#",
+		"#.......#",
+		"#......E#",
+		"#########",
+	],
+	# Sala 1
 	[
 		"#########",
 		"#.......#",
@@ -19,6 +30,7 @@ var layouts = [
 		"#.......#",
 		"#########",
 	],
+	# Sala 2
 	[
 		"#########",
 		"#...#...#",
@@ -28,6 +40,7 @@ var layouts = [
 		"#.....E.#",
 		"#########",
 	],
+	# Sala 3
 	[
 		"#########",
 		"#.......#",
@@ -37,6 +50,7 @@ var layouts = [
 		"#.......#",
 		"#########",
 	],
+	# Sala 4
 	[
 		"#########",
 		"#..E....#",

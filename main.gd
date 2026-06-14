@@ -9,6 +9,7 @@ extends Node2D
 @onready var mapa = $Mapa
 @onready var interpretador = $Interpretador
 @onready var gerenciador_inimigos = $GerenciadorInimigos
+@onready var tutorial = $Tutorial
 
 var historico: Array = []
 var historico_index: int = -1
@@ -19,41 +20,44 @@ func _ready():
 	player.gerenciador_inimigos = gerenciador_inimigos
 	gerenciador_inimigos.mapa = mapa
 	interpretador.player = player
+	player.interpretador = interpretador
 	
 	player.jogador_morreu.connect(_on_jogador_morreu)
 	player.hp_alterado.connect(_on_hp_alterado)
 	player.chegou_na_saida.connect(_on_chegou_na_saida)
+	tutorial.tutorial_concluido.connect(_on_tutorial_concluido)
+	
+	input_line.connect("text_submitted", _on_comando_enviado)
 	
 	_iniciar_sala(0)
 	
-	input_line.connect("text_submitted", _on_comando_enviado)
-	_adicionar_saida("Terminal PyAdventure iniciado!")
-	_adicionar_saida("Encontre a saída 🟢 para avançar!")
+	# Inicia o tutorial na primeira vez
+	tutorial.iniciar()
+	_adicionar_saida("📖 Tutorial iniciado! Siga as instruções na tela.")
 	_adicionar_saida("─────────────────────────")
 
 func _iniciar_sala(indice: int):
 	sala_atual = indice
-	
-	# Carrega o mapa da sala
 	mapa.carregar_sala(indice)
-	
-	# Reseta posição do player
 	player.grid_pos = Vector2i(1, 1)
 	player._sincronizar_posicao()
 	
-	# Remove inimigos antigos
 	for filho in gerenciador_inimigos.get_children():
 		filho.queue_free()
 	gerenciador_inimigos.inimigos.clear()
 	
 	await get_tree().process_frame
-	
-	# Spawna inimigos em posições aleatórias
 	_spawnar_inimigos_sala()
 
 func _spawnar_inimigos_sala():
-	# Quantidade de inimigos cresce com o número da sala
-	var quantidade = min(1 + sala_atual, 4)
+	if sala_atual == 0:
+		# Inimigo normal próximo ao spawn
+		gerenciador_inimigos.spawnar_inimigo(Vector2i(3, 2))
+		# Inimigo com escudo protegendo a saída
+		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 3))
+		return
+	
+	var quantidade = min(sala_atual, 4)
 	var tentativas = 0
 	var spawnados = 0
 	
@@ -63,24 +67,26 @@ func _spawnar_inimigos_sala():
 		var y = randi_range(1, 5)
 		var pos = Vector2i(x, y)
 		
-		# Não spawna em paredes, na saída ou na posição inicial do player
 		if not mapa.eh_parede(pos) and pos != mapa.saida_pos and pos != Vector2i(1, 1):
 			gerenciador_inimigos.spawnar_inimigo(pos)
 			spawnados += 1
+
+func _on_tutorial_concluido():
+	_adicionar_saida("✅ Tutorial concluído! Boa sorte na sua jornada!")
+	_adicionar_saida("─────────────────────────")
 
 func _on_chegou_na_saida():
 	_adicionar_saida("✨ Sala " + str(sala_atual + 1) + " concluída!")
 	_adicionar_saida("Carregando próxima sala...")
 	_adicionar_saida("─────────────────────────")
-	
 	await get_tree().create_timer(0.8).timeout
 	_iniciar_sala(sala_atual + 1)
-	
-	_adicionar_saida("📍 Sala " + str(sala_atual + 1) + " — Inimigos: " + str(gerenciador_inimigos.inimigos.size()))
+	_adicionar_saida("📍 Sala " + str(sala_atual + 1))
 	_adicionar_saida("─────────────────────────")
 
 func _input(event):
 	if event is InputEventKey and event.pressed:
+		
 		if event.keycode == KEY_UP:
 			if historico.size() > 0:
 				historico_index = max(historico_index - 1, 0)
@@ -104,15 +110,29 @@ func _on_comando_enviado(texto: String):
 		_reiniciar_run()
 		return
 	
+	# Se tutorial ativo, verifica o comando antes de executar
+	if tutorial.esta_ativo():
+		_adicionar_saida(">>> " + texto)
+		var resposta = interpretador.executar(texto)
+		if resposta != "":
+			_adicionar_saida(resposta)
+		
+		# Passa a resposta do jogo para o tutorial detectar o escudo
+		tutorial.verificar_comando(texto, resposta)
+		
+		_adicionar_saida("─────────────────────────")
+		input_line.clear()
+		input_line.grab_focus()
+		return
+	
+	# Fora do tutorial — execução normal
 	historico.append(texto)
 	historico_index = historico.size()
-	
 	_adicionar_saida(">>> " + texto)
 	var resposta = interpretador.executar(texto)
 	if resposta != "":
 		_adicionar_saida(resposta)
 	_adicionar_saida("─────────────────────────")
-	
 	input_line.clear()
 	input_line.grab_focus()
 
@@ -128,14 +148,11 @@ func _on_hp_alterado(hp_atual: int, hp_max: int):
 func _reiniciar_run():
 	player.resetar()
 	output_label.text = ""
-	
 	await get_tree().process_frame
 	_iniciar_sala(0)
-	
+	tutorial.iniciar()
 	_adicionar_saida("🔄 Nova run iniciada!")
-	_adicionar_saida("Encontre a saída 🟢 para avançar!")
 	_adicionar_saida("─────────────────────────")
-	
 	input_line.clear()
 	input_line.grab_focus()
 

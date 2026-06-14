@@ -5,6 +5,7 @@ const TAMANHO_CELULA = 64
 var grid_pos: Vector2i = Vector2i(1, 1)
 var mapa: Node = null
 var gerenciador_inimigos: Node = null
+var interpretador: Node = null
 
 # HP do jogador
 var hp: int = 10
@@ -66,6 +67,14 @@ func executar_comando(comando: String) -> String:
 	var resultado_atacar = regex_atacar.search(comando)
 	if resultado_atacar:
 		return _atacar(resultado_atacar.get_string(1))
+# Detecta atacar_com(variavel, 'direcao')
+	var regex_atacar_com = RegEx.new()
+	regex_atacar_com.compile("atacar_com\\((\\w+),\\s*['\"]?(\\w+)['\"]?\\)")
+	var resultado_atacar_com = regex_atacar_com.search(comando)
+	if resultado_atacar_com:
+		var nome_var = resultado_atacar_com.get_string(1)
+		var direcao = resultado_atacar_com.get_string(2)
+		return _atacar_com_variavel(nome_var, direcao)
 	
 	return "Comando não reconhecido. Tente: mover('direita') ou atacar('direita')"
 
@@ -105,10 +114,31 @@ func resetar():
 	grid_pos = Vector2i(1, 1)
 	_sincronizar_posicao()
 	emit_signal("hp_alterado", hp, hp_max)
-
+func _atacar_com_variavel(nome_variavel: String, direcao: String) -> String:
+	var alvo = grid_pos
+	
+	match direcao:
+		"direita": alvo.x += 1
+		"esquerda": alvo.x -= 1
+		"cima": alvo.y -= 1
+		"baixo": alvo.y += 1
+		_: return "Direcao invalida!"
+	
+	# Busca o valor da variável no interpretador
+	var dano = 1
+	if interpretador and nome_variavel in interpretador.variaveis:
+		var valor = interpretador.variaveis[nome_variavel]
+		if typeof(valor) == TYPE_INT or typeof(valor) == TYPE_FLOAT:
+			dano = int(valor)
+	
+	if gerenciador_inimigos:
+		return gerenciador_inimigos.atacar_posicao(alvo, dano, true)
+	
+	return "Erro: gerenciador nao encontrado."
 func _sincronizar_posicao():
 	var destino = Vector2(grid_pos) * TAMANHO_CELULA + Vector2(TAMANHO_CELULA / 2, TAMANHO_CELULA / 2)
 	var tween = create_tween()
 	tween.tween_property(self, "position", destino, 0.15)\
 		.set_trans(Tween.TRANS_SINE)\
 		.set_ease(Tween.EASE_OUT)
+		

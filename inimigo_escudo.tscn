@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://b5ih1pn5xjrek"]
+[ext_resource type="Script" path="res://inimigo_escudo.gd" id="1_escudo"]
+[node name="InimigoEscudo" type="Node2D" unique_id=831119644]
+script = ExtResource("1_escudo")
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1577786853]
+offset_left = -24.0
+offset_top = -24.0
+offset_right = 24.0
+offset_bottom = 24.0
+color = Color(0.7373294, 0.3491902, 0.9063318, 1)
+[node name="HPLabel" type="Label" parent="." unique_id=1090465672]
+offset_left = -16.0
+offset_top = -40.0
+offset_right = 24.0
+offset_bottom = -17.0
+text = "🛡 5"
+[node name="EscudoLabel" type="Label" parent="." unique_id=1258099521]
+offset_left = -8.0
+offset_top = -8.0
+offset_right = 32.0
+offset_bottom = 15.0
+text = "✨"
