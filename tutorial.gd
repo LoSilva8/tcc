@@ -13,59 +13,58 @@ var etapa_atual: int = 0
 var ativo: bool = false
 var tentativas: int = 0
 
-# Cada etapa: { titulo, texto, comando_esperado, dica }
 var etapas = [
 	{
 		"titulo": "PyAdventure - Tutorial",
-		"texto": "Voce e um mago aprendiz na Grande\nBiblioteca de Sintaxe.\n\nAqui a magia funciona atraves de\ncodigo Python real!\n\nVamos comecar movendo seu personagem\npara a direita:",
+		"texto": "Voce e um mago aprendiz na Grande\nBiblioteca de Sintaxe.\n\nAqui a magia funciona com comandos\ninspirados em Python.\n\nComece movendo seu personagem para\na direita:",
 		"comando": "mover('direita')",
-		"dica": "Digite: mover('direita')\nUse aspas simples dentro dos parenteses!"
+		"dica": "Digite: mover('direita')\nUse aspas simples dentro dos parenteses."
 	},
 	{
-		"titulo": "Voce se moveu!",
-		"texto": "mover() e uma FUNCAO — uma instrucao\nque diz ao computador o que fazer.\n\nO texto entre aspas e o ARGUMENTO\n— ele define a direcao.\n\nAgora mova para baixo:",
+		"titulo": "Movimento",
+		"texto": "mover() e uma funcao: uma instrucao\nque diz ao jogo o que fazer.\n\nO texto entre aspas e o argumento:\nele define a direcao.\n\nAgora mova para baixo:",
 		"comando": "mover('baixo')",
 		"dica": "Digite: mover('baixo')"
 	},
 	{
-		"titulo": "Continue explorando!",
+		"titulo": "Combate",
 		"texto": "Ha um inimigo logo a sua direita.\nUse atacar() para atingi-lo.\n\nAtaque para a direita:",
 		"comando": "atacar('direita')",
-		"dica": "Digite: atacar('direita')\nO inimigo precisa de 3 ataques!"
+		"dica": "Digite: atacar('direita')\nO inimigo precisa de 3 ataques."
 	},
 	{
-		"titulo": "Bom ataque! Continue!",
-		"texto": "O inimigo ainda esta vivo!\nAtaque mais uma vez:",
+		"titulo": "Bom ataque",
+		"texto": "O inimigo ainda esta vivo.\nAtaque mais uma vez:",
 		"comando": "atacar('direita')",
 		"dica": "Digite: atacar('direita')"
 	},
 	{
-		"titulo": "Ultimo golpe!",
-		"texto": "Mais um ataque para derrota-lo!",
+		"titulo": "Ultimo golpe",
+		"texto": "Mais um ataque para derrota-lo:",
 		"comando": "atacar('direita')",
 		"dica": "Digite: atacar('direita')"
 	},
 	{
-		"titulo": "Inimigo Magico!",
-		"texto": "Inimigo derrotado!\n\nHa um inimigo roxo no canto\ninferior direito da sala!\n\nEle tem um ESCUDO MAGICO que\nbloqueie ataques normais.\n\nVa ate ele usando mover() e\ntente ataca-lo!",
+		"titulo": "Inimigo magico",
+		"texto": "Inimigo derrotado.\n\nHa um inimigo roxo no canto inferior\ndireito da sala.\n\nEle tem um escudo magico que bloqueia\nataques normais.\n\nVa ate ele usando mover() e tente\nataca-lo.",
 		"comando": null,
 		"dica": ""
 	},
 	{
-		"titulo": "Crie a variavel magica!",
-		"texto": "O escudo bloqueou!\n\nPara vencer, voce precisa de\numa VARIAVEL — uma caixa\nque guarda um valor:\n\n  golpes = 5\n\nCrie a variavel:",
+		"titulo": "Variavel magica",
+		"texto": "O escudo bloqueou.\n\nPara vencer, voce precisa de uma\nvariavel: uma caixa que guarda um valor.\n\n  golpes = 5\n\nCrie a variavel:",
 		"comando": "golpes = 5",
-		"dica": "Digite: golpes = 5\nO sinal = significa recebe o valor!"
+		"dica": "Digite: golpes = 5\nO sinal = guarda o valor na variavel."
 	},
 	{
-		"titulo": "Use a magia variavel!",
-		"texto": "Variavel criada!\n\nAgora use o comando especial\nque usa a variavel como magia:\n\n  atacar_com(golpes, 'direcao')\n\nO inimigo roxo esta a sua direita\nou abaixo — ajuste a direcao!\n\nAtaque com a variavel:",
+		"titulo": "Use a variavel",
+		"texto": "Variavel criada.\n\nAgora use o comando especial que usa a\nvariavel como magia:\n\n  atacar_com(golpes, 'direcao')\n\nO inimigo roxo esta a sua direita ou\nabaixo. Ajuste a direcao se precisar.\n\nAtaque com a variavel:",
 		"comando": "atacar_com(golpes, 'direita')",
-		"dica": "Digite: atacar_com(golpes, 'direita')\nPerceba: golpes sem aspas — e variavel!"
+		"dica": "Digite: atacar_com(golpes, 'direita')\nPerceba: golpes fica sem aspas."
 	},
 	{
-		"titulo": "Encontre a Saida!",
-		"texto": "Inimigo derrotado com magia!\n\nVoce aprendeu:\n  mover('dir')      → move\n  atacar('dir')     → ataca\n  x = valor         → variavel\n  atacar_com(x,dir) → magia!\n\nAgora va ate a saida VERDE!",
+		"titulo": "Encontre a saida",
+		"texto": "Inimigo derrotado com magia.\n\nVoce aprendeu:\n  mover('dir')      -> move\n  atacar('dir')     -> ataca\n  x = valor         -> variavel\n  atacar_com(x,dir) -> magia\n\nAgora va ate a saida verde.",
 		"comando": null,
 		"dica": ""
 	},
@@ -103,7 +102,6 @@ func verificar_comando(comando_digitado: String, resposta_jogo: String = "") -> 
 	
 	var etapa = etapas[etapa_atual]
 	
-	# Etapa null — aguarda o jogador bater no escudo naturalmente
 	if etapa["comando"] == null:
 		if "escudo" in resposta_jogo.to_lower():
 			_avancar()

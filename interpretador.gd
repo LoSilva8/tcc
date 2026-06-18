@@ -177,6 +177,19 @@ func _processar_atribuicao(linha: String) -> String:
 # ─── COMANDOS ───────────────────────────────────────────
 
 func _executar_comando(linha: String) -> String:
+	# Detecta atacar_com ANTES de resolver variaveis
+	var regex_atacar_com = RegEx.new()
+	regex_atacar_com.compile("atacar_com\\((\\w+),\\s*['\"]?(\\w+)['\"]?\\)")
+	var resultado = regex_atacar_com.search(linha)
+	
+	if resultado:
+		var nome_var = resultado.get_string(1)
+		var direcao = resultado.get_string(2)
+		# Passa o NOME da variavel, nao o valor resolvido
+		if player:
+			return player._atacar_com_variavel(nome_var, direcao)
+	
+	# Para outros comandos, resolve variaveis normalmente
 	var linha_resolvida = _resolver_variaveis(linha)
 	return _executar_comando_resolvido(linha_resolvida)
 

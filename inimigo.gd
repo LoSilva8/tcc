@@ -16,7 +16,7 @@ func inicializar(pos: Vector2i):
 
 func receber_dano(dano: int) -> String:
 	if not vivo:
-		return "O inimigo já está derrotado!"
+		return "O inimigo ja esta derrotado."
 	
 	hp -= dano
 	_atualizar_hp()
@@ -24,16 +24,16 @@ func receber_dano(dano: int) -> String:
 	if hp <= 0:
 		vivo = false
 		_morrer()
-		return "Inimigo derrotado! ⚔️ +" + str(10) + " XP"
+		return "Inimigo derrotado. +10 XP"
 	
-	return "Inimigo atingido! HP restante: " + str(hp) + "/" + str(hp_max)
+	return "Inimigo atingido. HP restante: " + str(hp) + "/" + str(hp_max)
 
 func _atualizar_hp():
 	if hp_label:
-		hp_label.text = "❤ " + str(max(hp, 0)) + "/" + str(hp_max)
+		hp_label.text = "HP " + str(max(hp, 0)) + "/" + str(hp_max)
 
 func _morrer():
-	# Animação simples de morte
 	var tween = create_tween()
-	tween.tween_property(self, "modulate:a", 0.0, 0.4)
+	tween.tween_property(self, "scale", Vector2(1.25, 1.25), 0.12)
+	tween.tween_property(self, "modulate:a", 0.0, 0.32)
 	tween.tween_callback(queue_free)

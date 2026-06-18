@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://cjfeoq086kr34" path="res://interpretador.gd" id="4_1bvp3"]
 [ext_resource type="Script" uid="uid://bh2c0bs77ig6b" path="res://gerenciador_inimigos.gd" id="6_7mycd"]
 [ext_resource type="Script" uid="uid://ylkpjes3e6l4" path="res://tutorial.gd" id="6_272bh"]
+[ext_resource type="Script" uid="uid://cjypu1x01a20h" path="res://design.gd" id="7_design"]
 
 [sub_resource type="TileSet" id="TileSet_1bvp3"]
 tile_size = Vector2i(64, 64)
@@ -45,7 +46,7 @@ layout_mode = 2
 
 [node name="HPIcon" type="Label" parent="UI/PanelContainer/VBoxContainer/HPContainer" unique_id=683313933]
 layout_mode = 2
-text = "❤"
+text = "HP"
 
 [node name="HPBar" type="ProgressBar" parent="UI/PanelContainer/VBoxContainer/HPContainer" unique_id=920499391]
 custom_minimum_size = Vector2(0, 20)
@@ -83,7 +84,7 @@ layout_mode = 2
 [node name="TutorialTitulo" type="Label" parent="UI/TutorialBox/VBoxContainer" unique_id=143056564]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "📖 Tutorial"
+text = "Tutorial"
 horizontal_alignment = 1
 
 [node name="TutorialTexto" type="Label" parent="UI/TutorialBox/VBoxContainer" unique_id=1112814526]
@@ -100,7 +101,7 @@ autowrap_mode = 2
 [node name="TutorialComando" type="Label" parent="UI/TutorialBox/VBoxContainer" unique_id=510144296]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.66668326, 1, 0.6651851, 1)
-text = "Digite o comando abaixo ↓"
+text = "Digite o comando abaixo"
 horizontal_alignment = 1
 
 [node name="Mapa" type="Node2D" parent="." unique_id=343877730]
@@ -114,3 +115,6 @@ script = ExtResource("6_7mycd")
 
 [node name="Tutorial" type="Node" parent="." unique_id=1801097406]
 script = ExtResource("6_272bh")
+
+[node name="Design" type="Node" parent="." unique_id=1187222804]
+script = ExtResource("7_design")

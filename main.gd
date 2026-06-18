@@ -31,10 +31,9 @@ func _ready():
 	
 	_iniciar_sala(0)
 	
-	# Inicia o tutorial na primeira vez
 	tutorial.iniciar()
-	_adicionar_saida("📖 Tutorial iniciado! Siga as instruções na tela.")
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("[tutorial] Tutorial iniciado. Siga as instrucoes na tela.")
+	_adicionar_saida("------------------------------")
 
 func _iniciar_sala(indice: int):
 	sala_atual = indice
@@ -51,9 +50,7 @@ func _iniciar_sala(indice: int):
 
 func _spawnar_inimigos_sala():
 	if sala_atual == 0:
-		# Inimigo normal próximo ao spawn
 		gerenciador_inimigos.spawnar_inimigo(Vector2i(3, 2))
-		# Inimigo com escudo protegendo a saída
 		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 3))
 		return
 	
@@ -72,21 +69,20 @@ func _spawnar_inimigos_sala():
 			spawnados += 1
 
 func _on_tutorial_concluido():
-	_adicionar_saida("✅ Tutorial concluído! Boa sorte na sua jornada!")
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("[ok] Tutorial concluido. Boa sorte na sua jornada!")
+	_adicionar_saida("------------------------------")
 
 func _on_chegou_na_saida():
-	_adicionar_saida("✨ Sala " + str(sala_atual + 1) + " concluída!")
-	_adicionar_saida("Carregando próxima sala...")
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("[sala] Sala " + str(sala_atual + 1) + " concluida!")
+	_adicionar_saida("Carregando proxima sala...")
+	_adicionar_saida("------------------------------")
 	await get_tree().create_timer(0.8).timeout
 	_iniciar_sala(sala_atual + 1)
-	_adicionar_saida("📍 Sala " + str(sala_atual + 1))
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("[mapa] Sala " + str(sala_atual + 1))
+	_adicionar_saida("------------------------------")
 
 func _input(event):
 	if event is InputEventKey and event.pressed:
-		
 		if event.keycode == KEY_UP:
 			if historico.size() > 0:
 				historico_index = max(historico_index - 1, 0)
@@ -110,14 +106,16 @@ func _on_comando_enviado(texto: String):
 		_reiniciar_run()
 		return
 	
-	# Se tutorial ativo, verifica o comando antes de executar
 	if tutorial.esta_ativo():
+		# Adiciona ao histórico mesmo durante o tutorial
+		historico.append(texto)
+		historico_index = historico.size()
+		
 		_adicionar_saida(">>> " + texto)
 		var resposta = interpretador.executar(texto)
 		if resposta != "":
 			_adicionar_saida(resposta)
 		
-		# Passa a resposta do jogo para o tutorial detectar o escudo
 		tutorial.verificar_comando(texto, resposta)
 		
 		_adicionar_saida("─────────────────────────")
@@ -125,21 +123,20 @@ func _on_comando_enviado(texto: String):
 		input_line.grab_focus()
 		return
 	
-	# Fora do tutorial — execução normal
 	historico.append(texto)
 	historico_index = historico.size()
 	_adicionar_saida(">>> " + texto)
 	var resposta = interpretador.executar(texto)
 	if resposta != "":
 		_adicionar_saida(resposta)
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("------------------------------")
 	input_line.clear()
 	input_line.grab_focus()
 
 func _on_jogador_morreu():
-	_adicionar_saida("💀 RUN ENCERRADA! Chegou até a sala " + str(sala_atual + 1))
+	_adicionar_saida("[run] Run encerrada. Voce chegou ate a sala " + str(sala_atual + 1) + ".")
 	_adicionar_saida("Digite reiniciar() para tentar novamente.")
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("------------------------------")
 
 func _on_hp_alterado(hp_atual: int, hp_max: int):
 	hp_bar.value = hp_atual
@@ -151,8 +148,8 @@ func _reiniciar_run():
 	await get_tree().process_frame
 	_iniciar_sala(0)
 	tutorial.iniciar()
-	_adicionar_saida("🔄 Nova run iniciada!")
-	_adicionar_saida("─────────────────────────")
+	_adicionar_saida("[run] Nova run iniciada.")
+	_adicionar_saida("------------------------------")
 	input_line.clear()
 	input_line.grab_focus()
 

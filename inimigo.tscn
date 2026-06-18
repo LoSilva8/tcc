@@ -1,16 +1,31 @@
 [gd_scene format=3 uid="uid://civppsq5gmq0f"]
+
 [ext_resource type="Script" uid="uid://423bm4y8vbis" path="res://inimigo.gd" id="1_030df"]
+[ext_resource type="Script" path="res://enemy_visual.gd" id="2_visual"]
+
 [node name="Inimigo" type="Node2D"]
 script = ExtResource("1_030df")
+
 [node name="ColorRect" type="ColorRect" parent="."]
+visible = false
 offset_left = -24.0
 offset_top = -24.0
 offset_right = 24.0
 offset_bottom = 24.0
 color = Color(0.8, 0.1, 0.1, 1)
+
+[node name="Visual" type="Node2D" parent="."]
+script = ExtResource("2_visual")
+
 [node name="HPLabel" type="Label" parent="."]
-offset_left = -16.0
-offset_top = -40.0
-offset_right = 24.0
-offset_bottom = -17.0
-text = "❤ 3"
+offset_left = -26.0
+offset_top = -42.0
+offset_right = 34.0
+offset_bottom = -19.0
+theme_override_colors/font_color = Color(1, 0.82, 0.56, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 13
+text = "HP 3"
+horizontal_alignment = 1
