@@ -10,17 +10,20 @@ extends Node2D
 @onready var interpretador = $Interpretador
 @onready var gerenciador_inimigos = $GerenciadorInimigos
 @onready var tutorial = $Tutorial
+@onready var debug_console = $DebugConsole
 
 var historico: Array = []
 var historico_index: int = -1
 var sala_atual: int = 0
 
 func _ready():
+	debug_console.configurar(self)
 	player.mapa = mapa
 	player.gerenciador_inimigos = gerenciador_inimigos
 	gerenciador_inimigos.mapa = mapa
 	interpretador.player = player
 	player.interpretador = interpretador
+	gerenciador_inimigos.chefe_derrotado.connect(_on_chefe_derrotado)
 	
 	player.jogador_morreu.connect(_on_jogador_morreu)
 	player.hp_alterado.connect(_on_hp_alterado)
@@ -47,11 +50,21 @@ func _iniciar_sala(indice: int):
 	
 	await get_tree().process_frame
 	_spawnar_inimigos_sala()
+	
+	if indice == 4:
+		_adicionar_saida("[chefe] O Guardiao de Runas bloqueia a saida do bioma!")
+		_adicionar_saida("Cada parte exige uma variavel com nome especifico (veja acima dele).")
+		_adicionar_saida("Use: nome = valor  e depois  atacar_com(nome, 'direcao')")
+		_adicionar_saida("------------------------------")
 
 func _spawnar_inimigos_sala():
 	if sala_atual == 0:
 		gerenciador_inimigos.spawnar_inimigo(Vector2i(3, 2))
 		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 3))
+		return
+	
+	if sala_atual == 4:
+		gerenciador_inimigos.spawnar_chefe(Vector2i(4, 3))
 		return
 	
 	var quantidade = min(sala_atual, 4)
@@ -73,6 +86,12 @@ func _on_tutorial_concluido():
 	_adicionar_saida("------------------------------")
 
 func _on_chegou_na_saida():
+	if sala_atual == 4 and gerenciador_inimigos.chefe_vivo():
+		_adicionar_saida("[chefe] O Guardiao de Runas ainda protege a saida!")
+		_adicionar_saida("Derrote-o primeiro.")
+		_adicionar_saida("------------------------------")
+		return
+	
 	_adicionar_saida("[sala] Sala " + str(sala_atual + 1) + " concluida!")
 	_adicionar_saida("Carregando proxima sala...")
 	_adicionar_saida("------------------------------")
@@ -157,3 +176,7 @@ func _adicionar_saida(linha: String):
 	output_label.text += linha + "\n"
 	await get_tree().process_frame
 	scroll.scroll_vertical = scroll.get_v_scroll_bar().max_value
+	
+func _on_chefe_derrotado():
+	_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
+	_adicionar_saida("------------------------------")

@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://bh2c0bs77ig6b" path="res://gerenciador_inimigos.gd" id="6_7mycd"]
 [ext_resource type="Script" uid="uid://ylkpjes3e6l4" path="res://tutorial.gd" id="6_272bh"]
 [ext_resource type="Script" uid="uid://cjypu1x01a20h" path="res://design.gd" id="7_design"]
+[ext_resource type="Script" uid="uid://c5tjf03gfdko" path="res://debug_console.gd" id="8_5vw27"]
 
 [sub_resource type="TileSet" id="TileSet_1bvp3"]
 tile_size = Vector2i(64, 64)
@@ -118,3 +119,6 @@ script = ExtResource("6_272bh")
 
 [node name="Design" type="Node" parent="." unique_id=1187222804]
 script = ExtResource("7_design")
+
+[node name="DebugConsole" type="CanvasLayer" parent="." unique_id=780750998]
+script = ExtResource("8_5vw27")

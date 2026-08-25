@@ -136,9 +136,6 @@ func resetar():
 	emit_signal("hp_alterado", hp, hp_max)
 
 func _atacar_com_variavel(nome_variavel: String, direcao: String) -> String:
-	print("Interpretador:", interpretador)
-	print("Variaveis:", interpretador.variaveis if interpretador else "NULL")
-	print("Nome variavel buscada:", nome_variavel)
 	var alvo = grid_pos
 	
 	match direcao:
@@ -155,7 +152,7 @@ func _atacar_com_variavel(nome_variavel: String, direcao: String) -> String:
 			dano = int(valor)
 	
 	if gerenciador_inimigos:
-		return gerenciador_inimigos.atacar_posicao(alvo, dano, true)
+		return gerenciador_inimigos.atacar_posicao(alvo, dano, true, nome_variavel)
 	
 	return "Erro: gerenciador nao encontrado."
 
