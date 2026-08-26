@@ -4,6 +4,7 @@ const TAMANHO_CELULA = 64
 
 var grid_pos: Vector2i = Vector2i(0, 0)
 var vivo: bool = true
+var xp_gerado: int = 0
 
 var partes = ["braco_esquerdo", "braco_direito", "nucleo"]
 var variavel_exigida = {
@@ -55,14 +56,16 @@ func receber_dano(dano: int, nome_variavel: String) -> String:
 		parte_atual_index += 1
 		
 		if parte_atual_index >= partes.size():
+			xp_gerado = 15
 			vivo = false
 			_atualizar_labels()
 			_morrer()
-			return texto + "\nGUARDIAO DE RUNAS DERROTADO!"
+			return texto + "\nGUARDIAO DE RUNAS DERROTADO! (+15 XP)"
 		else:
+			xp_gerado = 5
 			_atualizar_labels()
 			var proxima = parte_atual()
-			return texto + "\nAgora ataque o " + _nome_legivel(proxima) + " com a variavel '" + variavel_exigida[proxima] + "'."
+			return texto + " (+5 XP)\nAgora ataque o " + _nome_legivel(proxima) + " com a variavel '" + variavel_exigida[proxima] + "'."
 	
 	_atualizar_labels()
 	return _nome_legivel(parte).capitalize() + " atingido! HP: " + str(hp_partes[parte]) + "/" + str(hp_max_partes[parte])
@@ -87,7 +90,6 @@ func _atualizar_labels():
 	_atualizar_visual_partes()
 
 func _atualizar_visual_partes():
-	# Escurece partes destruídas, ilumina a parte ativa
 	var cor_ativa = Color(1.0, 0.85, 0.2, 1)
 	var cor_inativa = Color(0.85, 0.65, 0.13, 0.5)
 	var cor_destruida = Color(0.2, 0.2, 0.2, 0.3)
@@ -95,6 +97,7 @@ func _atualizar_visual_partes():
 	braco_esquerdo_rect.color = cor_destruida if hp_partes["braco_esquerdo"] <= 0 else (cor_ativa if parte_atual() == "braco_esquerdo" else cor_inativa)
 	braco_direito_rect.color = cor_destruida if hp_partes["braco_direito"] <= 0 else (cor_ativa if parte_atual() == "braco_direito" else cor_inativa)
 	nucleo_rect.color = cor_destruida if hp_partes["nucleo"] <= 0 else (cor_ativa if parte_atual() == "nucleo" else cor_inativa)
+
 func _morrer():
 	var tween = create_tween()
 	tween.tween_property(self, "scale", Vector2(1.4, 1.4), 0.25)

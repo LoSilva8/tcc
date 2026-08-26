@@ -11,32 +11,123 @@ extends Node2D
 @onready var gerenciador_inimigos = $GerenciadorInimigos
 @onready var tutorial = $Tutorial
 @onready var debug_console = $DebugConsole
+@onready var ui_root = $UI
 
 var historico: Array = []
 var historico_index: int = -1
 var sala_atual: int = 0
 
+var xp_bar: ProgressBar
+var xp_texto: Label
+var nivel_texto: Label
+var levelup_panel: PanelContainer
+var levelup_texto: Label
+
 func _ready():
-	debug_console.configurar(self)
 	player.mapa = mapa
 	player.gerenciador_inimigos = gerenciador_inimigos
 	gerenciador_inimigos.mapa = mapa
+	gerenciador_inimigos.player = player
 	interpretador.player = player
 	player.interpretador = interpretador
-	gerenciador_inimigos.chefe_derrotado.connect(_on_chefe_derrotado)
 	
 	player.jogador_morreu.connect(_on_jogador_morreu)
 	player.hp_alterado.connect(_on_hp_alterado)
 	player.chegou_na_saida.connect(_on_chegou_na_saida)
+	player.xp_alterado.connect(_on_xp_alterado)
+	player.nivel_up.connect(_on_nivel_up)
 	tutorial.tutorial_concluido.connect(_on_tutorial_concluido)
+	gerenciador_inimigos.chefe_derrotado.connect(_on_chefe_derrotado)
 	
 	input_line.connect("text_submitted", _on_comando_enviado)
+	
+	_construir_xp_ui()
+	_construir_levelup_ui()
 	
 	_iniciar_sala(0)
 	
 	tutorial.iniciar()
 	_adicionar_saida("[tutorial] Tutorial iniciado. Siga as instrucoes na tela.")
 	_adicionar_saida("------------------------------")
+	
+	debug_console.configurar(self)
+
+func _construir_xp_ui():
+	var vbox = $UI/PanelContainer/VBoxContainer
+	var hbox = HBoxContainer.new()
+	
+	nivel_texto = Label.new()
+	nivel_texto.text = "Nv 1 | Dmg 1"
+	nivel_texto.custom_minimum_size = Vector2(90, 0)
+	
+	xp_bar = ProgressBar.new()
+	xp_bar.min_value = 0
+	xp_bar.max_value = 5
+	xp_bar.value = 0
+	xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	xp_bar.custom_minimum_size = Vector2(0, 14)
+	xp_bar.modulate = Color(0.4, 0.7, 1.0)
+	
+	xp_texto = Label.new()
+	xp_texto.text = "0/5"
+	xp_texto.custom_minimum_size = Vector2(50, 0)
+	
+	hbox.add_child(nivel_texto)
+	hbox.add_child(xp_bar)
+	hbox.add_child(xp_texto)
+	
+	vbox.add_child(hbox)
+	var hp_index = vbox.get_node("HPContainer").get_index()
+	vbox.move_child(hbox, hp_index + 1)
+
+func _construir_levelup_ui():
+	levelup_panel = PanelContainer.new()
+	levelup_panel.anchor_left = 0.5
+	levelup_panel.anchor_right = 0.5
+	levelup_panel.anchor_top = 0.5
+	levelup_panel.anchor_bottom = 0.5
+	levelup_panel.offset_left = -220
+	levelup_panel.offset_right = 220
+	levelup_panel.offset_top = -140
+	levelup_panel.offset_bottom = 140
+	levelup_panel.visible = false
+	ui_root.add_child(levelup_panel)
+	
+	var vbox = VBoxContainer.new()
+	levelup_panel.add_child(vbox)
+	
+	var titulo = Label.new()
+	titulo.text = "VOCE SUBIU DE NIVEL!"
+	titulo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	titulo.add_theme_color_override("font_color", Color(1, 0.85, 0.2))
+	vbox.add_child(titulo)
+	
+	levelup_texto = Label.new()
+	levelup_texto.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(levelup_texto)
+
+func _on_xp_alterado(xp_atual, xp_prox, nivel):
+	if xp_bar:
+		xp_bar.max_value = xp_prox
+		xp_bar.value = xp_atual
+	if xp_texto:
+		xp_texto.text = str(xp_atual) + "/" + str(xp_prox)
+	if nivel_texto:
+		nivel_texto.text = "Nv " + str(nivel) + " | Dmg " + str(player.dano_base)
+
+func _on_nivel_up(opcoes: Array):
+	var texto = "Escolha uma runa digitando escolher(numero) no terminal:\n\n"
+	for i in range(opcoes.size()):
+		var op = opcoes[i]
+		texto += str(i + 1) + ") " + op["nome"] + "\n   " + op["desc"] + "\n\n"
+	levelup_texto.text = texto
+	levelup_panel.visible = true
+	_adicionar_saida("[nivel] Voce subiu de nivel! Escolha uma runa: escolher(1), escolher(2) ou escolher(3)")
+	_adicionar_saida("------------------------------")
+
+func _atualizar_levelup_visibilidade():
+	if levelup_panel and levelup_panel.visible and player.pending_escolha.is_empty():
+		levelup_panel.visible = false
 
 func _iniciar_sala(indice: int):
 	sala_atual = indice
@@ -60,7 +151,7 @@ func _iniciar_sala(indice: int):
 func _spawnar_inimigos_sala():
 	if sala_atual == 0:
 		gerenciador_inimigos.spawnar_inimigo(Vector2i(3, 2))
-		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 3))
+		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 3), 1)
 		return
 	
 	if sala_atual == 4:
@@ -82,7 +173,12 @@ func _spawnar_inimigos_sala():
 			spawnados += 1
 
 func _on_tutorial_concluido():
+	player.xp_habilitado = true
 	_adicionar_saida("[ok] Tutorial concluido. Boa sorte na sua jornada!")
+	_adicionar_saida("------------------------------")
+
+func _on_chefe_derrotado():
+	_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
 	_adicionar_saida("------------------------------")
 
 func _on_chegou_na_saida():
@@ -126,7 +222,6 @@ func _on_comando_enviado(texto: String):
 		return
 	
 	if tutorial.esta_ativo():
-		# Adiciona ao histórico mesmo durante o tutorial
 		historico.append(texto)
 		historico_index = historico.size()
 		
@@ -137,7 +232,7 @@ func _on_comando_enviado(texto: String):
 		
 		tutorial.verificar_comando(texto, resposta)
 		
-		_adicionar_saida("─────────────────────────")
+		_adicionar_saida("------------------------------")
 		input_line.clear()
 		input_line.grab_focus()
 		return
@@ -148,6 +243,7 @@ func _on_comando_enviado(texto: String):
 	var resposta = interpretador.executar(texto)
 	if resposta != "":
 		_adicionar_saida(resposta)
+	_atualizar_levelup_visibilidade()
 	_adicionar_saida("------------------------------")
 	input_line.clear()
 	input_line.grab_focus()
@@ -158,6 +254,7 @@ func _on_jogador_morreu():
 	_adicionar_saida("------------------------------")
 
 func _on_hp_alterado(hp_atual: int, hp_max: int):
+	hp_bar.max_value = hp_max
 	hp_bar.value = hp_atual
 	hp_texto.text = str(hp_atual) + "/" + str(hp_max)
 
@@ -167,6 +264,7 @@ func _reiniciar_run():
 	await get_tree().process_frame
 	_iniciar_sala(0)
 	tutorial.iniciar()
+	levelup_panel.visible = false
 	_adicionar_saida("[run] Nova run iniciada.")
 	_adicionar_saida("------------------------------")
 	input_line.clear()
@@ -176,7 +274,3 @@ func _adicionar_saida(linha: String):
 	output_label.text += linha + "\n"
 	await get_tree().process_frame
 	scroll.scroll_vertical = scroll.get_v_scroll_bar().max_value
-	
-func _on_chefe_derrotado():
-	_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
-	_adicionar_saida("------------------------------")

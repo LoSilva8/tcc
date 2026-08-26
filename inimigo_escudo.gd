@@ -7,12 +7,15 @@ var hp: int = 5
 var hp_max: int = 5
 var vivo: bool = true
 var escudo_ativo: bool = true
+var xp_gerado: int = 0
 
 @onready var hp_label = $HPLabel
 @onready var escudo_label = $EscudoLabel
 
-func inicializar(pos: Vector2i):
+func inicializar(pos: Vector2i, hp_inicial: int = 5):
 	grid_pos = pos
+	hp = hp_inicial
+	hp_max = hp_inicial
 	call_deferred("_aplicar_posicao")
 
 func _aplicar_posicao():
@@ -21,35 +24,27 @@ func _aplicar_posicao():
 		grid_pos.y * TAMANHO_CELULA + TAMANHO_CELULA / 2
 	)
 	_atualizar_hp()
-	print("Parent position:", get_parent().position)
-	print("Parent global:", get_parent().global_position)
-	print("Minha position:", position)
-	print("Minha global:", global_position)
 
 func receber_dano(dano: int, usando_variavel: bool) -> String:
-	print("Dano recebido:", dano, " | Usando variavel:", usando_variavel)
-	print("HP antes:", hp)
 	if not vivo:
 		return "O inimigo ja foi derrotado!"
 	
-	# Escudo bloqueia dano normal
 	if escudo_ativo and not usando_variavel:
 		return "O escudo magico bloqueou o ataque!\nEste inimigo so pode ser ferido com magia variavel.\nDica: defina golpes = 5 e use atacar_com(golpes, 'direcao')"
 	
-	# Quebra o escudo e aplica o dano total de uma vez
 	if escudo_ativo and usando_variavel:
 		escudo_ativo = false
 		escudo_label.text = ""
 	
-	# Aplica o dano total
 	hp -= dano
 	hp = max(hp, 0)
 	_atualizar_hp()
 	
 	if hp <= 0:
 		vivo = false
+		xp_gerado = 6
 		_morrer()
-		return "Escudo quebrado e inimigo derrotado!\nA magia variavel funcionou! +20 XP"
+		return "Escudo quebrado e inimigo derrotado! (+6 XP)"
 	
 	return "Escudo quebrado! Inimigo atingido! HP: " + str(hp) + "/" + str(hp_max)
 

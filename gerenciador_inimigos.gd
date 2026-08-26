@@ -6,6 +6,7 @@ const ChefeFlorestaCena = preload("res://chefe_floresta.tscn")
 
 var inimigos: Dictionary = {}
 var mapa: Node = null
+var player: Node = null
 
 signal chefe_derrotado
 
@@ -20,7 +21,7 @@ func spawnar_inimigo(pos: Vector2i):
 	inimigo.inicializar(pos)
 	inimigos[pos] = inimigo
 
-func spawnar_inimigo_escudo(pos: Vector2i):
+func spawnar_inimigo_escudo(pos: Vector2i, hp_inicial: int = 5):
 	if pos in inimigos:
 		return
 	if mapa and mapa.eh_parede(pos):
@@ -28,7 +29,7 @@ func spawnar_inimigo_escudo(pos: Vector2i):
 	
 	var inimigo = InimigoEscudoCena.instantiate()
 	add_child(inimigo)
-	inimigo.inicializar(pos)
+	inimigo.inicializar(pos, hp_inicial)
 	inimigos[pos] = inimigo
 
 func spawnar_chefe(pos: Vector2i):
@@ -68,6 +69,11 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 			resultado = inimigo.receber_dano(dano, usando_variavel)
 		else:
 			resultado = inimigo.receber_dano(dano)
+		
+		if "xp_gerado" in inimigo and inimigo.xp_gerado > 0:
+			if player:
+				player.ganhar_xp(inimigo.xp_gerado)
+			inimigo.xp_gerado = 0
 		
 		if not inimigo.vivo:
 			inimigos.erase(pos)

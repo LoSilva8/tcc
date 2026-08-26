@@ -6,6 +6,7 @@ var grid_pos: Vector2i = Vector2i(0, 0)
 var hp: int = 3
 var hp_max: int = 3
 var vivo: bool = true
+var xp_gerado: int = 0
 
 @onready var hp_label = $HPLabel
 
@@ -23,8 +24,9 @@ func receber_dano(dano: int) -> String:
 	
 	if hp <= 0:
 		vivo = false
+		xp_gerado = 3
 		_morrer()
-		return "Inimigo derrotado. +10 XP"
+		return "Inimigo derrotado. (+3 XP)"
 	
 	return "Inimigo atingido. HP restante: " + str(hp) + "/" + str(hp_max)
 
