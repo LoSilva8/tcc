@@ -2,6 +2,10 @@ extends CharacterBody2D
 
 const TAMANHO_CELULA = 64
 const HP_MAX_BASE = 10
+const FIREBALL_ALCANCE = 4
+const MANA_MAX_BASE = 6
+const FIREBALL_CUSTO_BASE = 2
+const MANA_RECUPERADA_POR_RODADA = 1
 
 var grid_pos: Vector2i = Vector2i(1, 1)
 var mapa: Node = null
@@ -10,6 +14,8 @@ var interpretador: Node = null
 
 var hp: int = 10
 var hp_max: int = 10
+var mana: int = 6
+var mana_max: int = 6
 var vivo: bool = true
 
 var nivel: int = 1
@@ -21,6 +27,7 @@ var xp_habilitado: bool = false
 
 signal jogador_morreu
 signal hp_alterado(hp_atual, hp_max)
+signal mana_alterada(mana_atual, mana_max)
 signal chegou_na_saida
 signal xp_alterado(xp_atual, xp_prox, nivel)
 signal nivel_up(opcoes)
@@ -79,15 +86,20 @@ func executar_comando(comando: String) -> String:
 			return _atacar(str(interpretador.variaveis[arg]))
 		return "Erro: '" + arg + "' nao e uma string nem uma variavel definida.\nDica: use aspas — atacar('" + arg + "')"
 	
-	var regex_atacar_com = RegEx.new()
-	regex_atacar_com.compile("atacar_com\\((\\w+),\\s*['\"]?(\\w+)['\"]?\\)")
-	var resultado_atacar_com = regex_atacar_com.search(comando)
-	if resultado_atacar_com:
-		var nome_var = resultado_atacar_com.get_string(1)
-		var direcao = resultado_atacar_com.get_string(2)
-		return _atacar_com_variavel(nome_var, direcao)
+	var regex_fireball = RegEx.new()
+	regex_fireball.compile("fireball\\((\\w+),\\s*['\"]?(\\w+)['\"]?\\)")
+	var resultado_fireball = regex_fireball.search(comando)
+	if resultado_fireball:
+		var nome_var = resultado_fireball.get_string(1)
+		var direcao = resultado_fireball.get_string(2)
+		return _fireball_com_variavel(nome_var, direcao)
 	
-	return "Comando nao reconhecido. Tente: mover('direita') ou atacar('direita')"
+	var regex_atacar_com = RegEx.new()
+	regex_atacar_com.compile("atacar_com\\((.+)\\)")
+	if regex_atacar_com.search(comando):
+		return "atacar_com foi substituido por fireball.\nUse: fireball(poder, 'direcao')"
+	
+	return "Comando nao reconhecido. Tente: mover('direita'), atacar('direita') ou fireball(poder, 'direita')"
 
 func _mover(direcao: String) -> String:
 	var nova_pos = grid_pos
@@ -100,6 +112,10 @@ func _mover(direcao: String) -> String:
 		_: return "Direcao invalida. Use: direita, esquerda, cima ou baixo."
 	
 	if mapa and mapa.eh_parede(nova_pos):
+		if mapa.sala_atual == 1 and nova_pos == mapa.PORTA_POS:
+			return "Bloqueado. Para abrir a porta, digite desafio(porta)."
+		if mapa.sala_atual == 1 and nova_pos == mapa.BAU_POS:
+			return "Bloqueado. Para abrir o bau, digite desafio(bau)."
 		return "Bloqueado. Ha uma parede nessa direcao."
 	
 	if gerenciador_inimigos and gerenciador_inimigos.tem_inimigo(nova_pos):
@@ -147,10 +163,13 @@ func _receber_dano(dano: int, motivo: String) -> String:
 func resetar():
 	hp_max = HP_MAX_BASE
 	hp = hp_max
+	mana_max = MANA_MAX_BASE
+	mana = mana_max
 	vivo = true
 	grid_pos = Vector2i(1, 1)
 	_sincronizar_posicao()
 	emit_signal("hp_alterado", hp, hp_max)
+	emit_signal("mana_alterada", mana, mana_max)
 	
 	nivel = 1
 	xp = 0
@@ -160,23 +179,104 @@ func resetar():
 	xp_habilitado = false
 	emit_signal("xp_alterado", xp, xp_prox, nivel)
 
-func _atacar_com_variavel(nome_variavel: String, direcao: String) -> String:
-	var alvo = grid_pos
-	
-	match direcao:
-		"direita": alvo.x += 1
-		"esquerda": alvo.x -= 1
-		"cima": alvo.y -= 1
-		"baixo": alvo.y += 1
-		_: return "Direcao invalida."
-	
+func curar_total():
+	hp = hp_max
+	mana = mana_max
+	vivo = true
+	emit_signal("hp_alterado", hp, hp_max)
+	emit_signal("mana_alterada", mana, mana_max)
+
+func _fireball_com_variavel(nome_variavel: String, direcao_arg: String) -> String:
 	if interpretador == null or not (nome_variavel in interpretador.variaveis):
 		return "A variavel '" + nome_variavel + "' nao foi definida.\nCrie-a antes: " + nome_variavel + " = valor"
 	
-	if gerenciador_inimigos:
-		return gerenciador_inimigos.atacar_posicao(alvo, dano_base, true, nome_variavel)
+	var poder = interpretador.variaveis[nome_variavel]
+	if not (typeof(poder) == TYPE_INT or typeof(poder) == TYPE_FLOAT):
+		return "Fireball precisa de uma variavel numerica.\nExemplo: poder = 3"
+	var custo_mana = _calcular_custo_fireball(poder)
+	if mana < custo_mana:
+		return "Mana insuficiente para fireball. Custo: " + str(custo_mana) + " MP (2 + " + str(max(int(poder), 0)) + " de poder). Mana: " + str(mana) + "/" + str(mana_max) + "\nUse mover('direcao') ou atacar('direcao') para passar uma rodada e recuperar mana."
 	
-	return "Erro: gerenciador nao encontrado."
+	var direcao = _resolver_direcao_fireball(direcao_arg)
+	var vetor = _vetor_direcao(direcao)
+	if vetor == Vector2i.ZERO:
+		return "Direcao invalida. Use: direita, esquerda, cima ou baixo."
+	
+	if gerenciador_inimigos == null:
+		return "Erro: gerenciador nao encontrado."
+	
+	_gastar_mana(custo_mana)
+	
+	var dano = clamp(int(poder) + max(dano_base - 1, 0), 1, 8)
+	var ultimo_ponto = grid_pos
+	
+	for distancia in range(1, FIREBALL_ALCANCE + 1):
+		var alvo = grid_pos + vetor * distancia
+		
+		if mapa and mapa.eh_parede(alvo):
+			_mostrar_fireball(ultimo_ponto)
+			return "Fireball bateu em uma parede antes de atingir um inimigo. Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + "."
+		
+		ultimo_ponto = alvo
+		
+		if gerenciador_inimigos.tem_inimigo(alvo):
+			_mostrar_fireball(alvo)
+			var resultado = gerenciador_inimigos.atacar_posicao(alvo, dano, true, nome_variavel)
+			return "Fireball lancada com " + nome_variavel + " = " + str(poder) + ". Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + ".\n" + resultado
+	
+	_mostrar_fireball(ultimo_ponto)
+	return "Fireball voou " + str(FIREBALL_ALCANCE) + " casas para " + direcao + ", mas nao atingiu inimigos. Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + "."
+
+func _calcular_custo_fireball(poder) -> int:
+	return FIREBALL_CUSTO_BASE + max(int(poder), 0)
+
+func _gastar_mana(qtd: int):
+	mana = max(mana - qtd, 0)
+	emit_signal("mana_alterada", mana, mana_max)
+
+func recuperar_mana_rodada() -> String:
+	var mana_antes = mana
+	mana = min(mana + MANA_RECUPERADA_POR_RODADA, mana_max)
+	
+	if mana == mana_antes:
+		return ""
+	
+	emit_signal("mana_alterada", mana, mana_max)
+	return "[mana] +" + str(mana - mana_antes) + " Mana: " + str(mana) + "/" + str(mana_max)
+
+func _resolver_direcao_fireball(direcao_arg: String) -> String:
+	if direcao_arg in ["direita", "esquerda", "cima", "baixo"]:
+		return direcao_arg
+	if interpretador and direcao_arg in interpretador.variaveis:
+		return str(interpretador.variaveis[direcao_arg])
+	return direcao_arg
+
+func _vetor_direcao(direcao: String) -> Vector2i:
+	match direcao:
+		"direita": return Vector2i(1, 0)
+		"esquerda": return Vector2i(-1, 0)
+		"cima": return Vector2i(0, -1)
+		"baixo": return Vector2i(0, 1)
+	return Vector2i.ZERO
+
+func _mostrar_fireball(alvo_grid: Vector2i):
+	var cena = get_tree().current_scene
+	if cena == null:
+		return
+	
+	var origem = Vector2(grid_pos) * TAMANHO_CELULA + Vector2(TAMANHO_CELULA / 2, TAMANHO_CELULA / 2)
+	var destino = Vector2(alvo_grid) * TAMANHO_CELULA + Vector2(TAMANHO_CELULA / 2, TAMANHO_CELULA / 2)
+	
+	var rastro = Line2D.new()
+	rastro.width = 9.0
+	rastro.default_color = Color(1.0, 0.36, 0.08, 0.9)
+	rastro.points = PackedVector2Array([origem, destino])
+	rastro.z_index = 25
+	cena.add_child(rastro)
+	
+	var tween = create_tween()
+	tween.tween_property(rastro, "modulate:a", 0.0, 0.28)
+	tween.tween_callback(rastro.queue_free)
 
 func ganhar_xp(qtd: int):
 	if qtd <= 0 or not xp_habilitado:
@@ -202,6 +302,7 @@ func _sortear_upgrades(qtd: int) -> Array:
 		{"nome": "Vigor da Serpente", "desc": "+3 HP maximo e cura completa", "tipo": "hp_max", "valor": 3},
 		{"nome": "Folego Extra", "desc": "Cura totalmente o HP atual", "tipo": "cura", "valor": 0},
 		{"nome": "Precisao Elfica", "desc": "+2 de dano base", "tipo": "dano", "valor": 2},
+		{"nome": "Fonte de Mana", "desc": "+2 MP maximo e recupera 2 MP", "tipo": "mana_max", "valor": 2},
 	]
 	pool.shuffle()
 	var qtd_real = min(qtd, pool.size())
@@ -221,6 +322,10 @@ func escolher_upgrade(indice: int) -> String:
 			hp_max += escolha["valor"]
 			hp = hp_max
 			emit_signal("hp_alterado", hp, hp_max)
+		"mana_max":
+			mana_max += escolha["valor"]
+			mana = min(mana + escolha["valor"], mana_max)
+			emit_signal("mana_alterada", mana, mana_max)
 		"cura":
 			hp = hp_max
 			emit_signal("hp_alterado", hp, hp_max)

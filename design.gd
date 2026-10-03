@@ -21,6 +21,8 @@ func _apply():
 	_add_screen_background(ui)
 	_style_command_panel(ui.get_node_or_null("PanelContainer"))
 	_style_tutorial(ui.get_node_or_null("TutorialBox"))
+	_style_resource_hud(ui.get_node_or_null("ResourceHud"))
+	_style_levelup(ui.get_node_or_null("LevelUpPanel"))
 
 func _add_screen_background(ui: CanvasLayer):
 	if ui.has_node("ScreenWash"):
@@ -39,22 +41,31 @@ func _style_command_panel(panel: PanelContainer):
 	if panel == null:
 		return
 	
-	panel.custom_minimum_size = Vector2(0, 156)
-	panel.add_theme_stylebox_override("panel", _panel_style(PANEL, STROKE, 8))
+	panel.custom_minimum_size = Vector2(0, 154)
+	var estilo_terminal = _panel_style(PANEL, STROKE, 8)
+	estilo_terminal.content_margin_top = 6
+	estilo_terminal.content_margin_bottom = 6
+	panel.add_theme_stylebox_override("panel", estilo_terminal)
+	panel.get_node("VBoxContainer").add_theme_constant_override("separation", 6)
 	panel.add_theme_constant_override("margin_left", 18)
 	panel.add_theme_constant_override("margin_right", 18)
 	panel.add_theme_constant_override("margin_top", 14)
 	panel.add_theme_constant_override("margin_bottom", 14)
 	
-	var input = panel.get_node_or_null("VBoxContainer/InputLine")
+	var input = panel.get_node_or_null("VBoxContainer/InputRow/InputLine")
 	if input:
-		input.placeholder_text = "Digite um comando Python...  exemplo: mover('direita')"
-		input.add_theme_stylebox_override("normal", _panel_style(Color(0.035, 0.045, 0.06, 1), Color(0.24, 0.32, 0.38), 6))
-		input.add_theme_stylebox_override("focus", _panel_style(Color(0.045, 0.06, 0.075, 1), ACCENT, 6))
+		input.placeholder_text = "mover('direita')"
+		var estilo_input = _panel_style(Color(0.035, 0.045, 0.06, 1), Color(0.24, 0.32, 0.38), 6)
+		estilo_input.content_margin_top = 4
+		estilo_input.content_margin_bottom = 4
+		input.add_theme_stylebox_override("normal", estilo_input)
+		var estilo_foco = estilo_input.duplicate()
+		estilo_foco.border_color = ACCENT
+		input.add_theme_stylebox_override("focus", estilo_foco)
 		input.add_theme_color_override("font_color", TEXT)
 		input.add_theme_color_override("font_placeholder_color", MUTED)
 		input.add_theme_color_override("caret_color", ACCENT)
-		input.add_theme_font_size_override("font_size", 18)
+		input.add_theme_font_size_override("font_size", 20)
 	
 	var hp_icon = panel.get_node_or_null("VBoxContainer/HPContainer/HPIcon")
 	if hp_icon:
@@ -75,12 +86,13 @@ func _style_command_panel(panel: PanelContainer):
 	
 	var output = panel.get_node_or_null("VBoxContainer/ScrollContainer/OutputLabel")
 	if output:
+		output.label_settings = null
 		output.add_theme_color_override("font_color", Color(0.72, 0.86, 0.84))
-		output.add_theme_font_size_override("font_size", 15)
+		output.add_theme_font_size_override("font_size", 17)
 	
 	var scroll = panel.get_node_or_null("VBoxContainer/ScrollContainer")
 	if scroll:
-		scroll.custom_minimum_size = Vector2(0, 72)
+		scroll.custom_minimum_size = Vector2(0, 88)
 
 func _style_tutorial(panel: PanelContainer):
 	if panel == null:
@@ -95,7 +107,6 @@ func _style_tutorial(panel: PanelContainer):
 	
 	var title = panel.get_node_or_null("VBoxContainer/TutorialTitulo")
 	if title:
-		title.text = "Tutorial"
 		title.add_theme_color_override("font_color", WARNING)
 		title.add_theme_font_size_override("font_size", 22)
 	
@@ -113,6 +124,26 @@ func _style_tutorial(panel: PanelContainer):
 	if command:
 		command.add_theme_color_override("font_color", WARNING)
 		command.add_theme_font_size_override("font_size", 15)
+
+func _style_resource_hud(panel: PanelContainer):
+	if panel == null:
+		return
+	
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.045, 0.064, 0.055, 0.93), Color(0.58, 0.8, 0.58, 0.55), 8))
+	panel.add_theme_constant_override("margin_left", 10)
+	panel.add_theme_constant_override("margin_right", 10)
+	panel.add_theme_constant_override("margin_top", 7)
+	panel.add_theme_constant_override("margin_bottom", 7)
+
+func _style_levelup(panel: PanelContainer):
+	if panel == null:
+		return
+	
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.08, 0.085, 0.07, 0.97), Color(1.0, 0.78, 0.28, 0.72), 8))
+	panel.add_theme_constant_override("margin_left", 18)
+	panel.add_theme_constant_override("margin_right", 18)
+	panel.add_theme_constant_override("margin_top", 16)
+	panel.add_theme_constant_override("margin_bottom", 16)
 
 func _panel_style(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
 	var style = StyleBoxFlat.new()

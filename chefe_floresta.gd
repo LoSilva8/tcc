@@ -46,7 +46,7 @@ func receber_dano(dano: int, nome_variavel: String) -> String:
 	var exigida = variavel_exigida[parte]
 	
 	if nome_variavel != exigida:
-		return "O " + _nome_legivel(parte) + " nao reage a essa magia.\nEle exige uma variavel chamada '" + exigida + "'.\nTente: " + exigida + " = valor"
+		return "O " + _nome_legivel(parte) + " nao reage a essa magia.\nEle exige uma variavel chamada '" + exigida + "'.\nTente: " + exigida + " = valor\ndepois fireball(" + exigida + ", 'direcao')"
 	
 	hp_partes[parte] -= dano
 	hp_partes[parte] = max(hp_partes[parte], 0)
@@ -65,7 +65,7 @@ func receber_dano(dano: int, nome_variavel: String) -> String:
 			xp_gerado = 5
 			_atualizar_labels()
 			var proxima = parte_atual()
-			return texto + " (+5 XP)\nAgora ataque o " + _nome_legivel(proxima) + " com a variavel '" + variavel_exigida[proxima] + "'."
+			return texto + " (+5 XP)\nAgora use fireball com a variavel '" + variavel_exigida[proxima] + "'."
 	
 	_atualizar_labels()
 	return _nome_legivel(parte).capitalize() + " atingido! HP: " + str(hp_partes[parte]) + "/" + str(hp_max_partes[parte])

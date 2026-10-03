@@ -30,7 +30,7 @@ func receber_dano(dano: int, usando_variavel: bool) -> String:
 		return "O inimigo ja foi derrotado!"
 	
 	if escudo_ativo and not usando_variavel:
-		return "O escudo magico bloqueou o ataque!\nEste inimigo so pode ser ferido com magia variavel.\nDica: defina golpes = 5 e use atacar_com(golpes, 'direcao')"
+		return "O escudo magico bloqueou o ataque!\nEste inimigo so pode ser ferido com fireball.\nDica: defina poder = 3 e use fireball(poder, 'direcao'). Custa 2 + poder."
 	
 	if escudo_ativo and usando_variavel:
 		escudo_ativo = false

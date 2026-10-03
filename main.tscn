@@ -38,10 +38,6 @@ grow_vertical = 0
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/PanelContainer" unique_id=889105134]
 layout_mode = 2
 
-[node name="InputLine" type="LineEdit" parent="UI/PanelContainer/VBoxContainer" unique_id=590791559]
-layout_mode = 2
-placeholder_text = "\"Digite um comando Python... (ex: mover('direita')\" "
-
 [node name="HPContainer" type="HBoxContainer" parent="UI/PanelContainer/VBoxContainer" unique_id=1676276170]
 layout_mode = 2
 
@@ -70,6 +66,31 @@ layout_mode = 2
 size_flags_horizontal = 3
 label_settings = SubResource("LabelSettings_lquwl")
 autowrap_mode = 2
+
+[node name="InputRow" type="HBoxContainer" parent="UI/PanelContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="InputLine" type="LineEdit" parent="UI/PanelContainer/VBoxContainer/InputRow" unique_id=590791559]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 40)
+expand_to_text_length = false
+keep_editing_on_text_submit = true
+placeholder_text = "mover('direita')"
+tooltip_text = "Enter executa e limpa o campo. Cima/baixo percorrem os ultimos 5 comandos diferentes."
+
+[node name="Recentes" type="MenuButton" parent="UI/PanelContainer/VBoxContainer/InputRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(40, 40)
+text = "..."
+tooltip_text = "Ultimos 5 comandos, sem repeticoes. Escolha para editar ou executar novamente."
+
+[node name="Executar" type="Button" parent="UI/PanelContainer/VBoxContainer/InputRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(40, 40)
+text = ">"
+tooltip_text = "Executar o comando (Enter)"
 
 [node name="TutorialBox" type="PanelContainer" parent="UI" unique_id=295173000]
 visible = false
