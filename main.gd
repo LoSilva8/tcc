@@ -19,6 +19,10 @@ const SALA_TUTORIAL = 0
 const SALA_FLORESTA = 1
 const SALA_CAVERNA = 5
 const SALA_CAVERNA_CHEFE = 8
+const SALA_LABIRINTO = 9
+const SALA_ELOS = 10
+const SALA_PONTE = 11
+const SALA_LABIRINTO_CHEFE = 12
 const LIMITE_HISTORICO = 5
 const ATRASO_ENTRE_ACOES = 0.22
 const PALAVRAS_PYTHON = ["if", "elif", "else", "for", "while", "in", "not", "and", "or", "break", "continue", "pass", "True", "False", "None", "def", "return"]
@@ -30,6 +34,7 @@ var rascunho_terminal = ""
 var sala_atual: int = 0
 var fase_1_concluida: bool = false
 var fase_2_concluida: bool = false
+var fase_3_concluida: bool = false
 var trocando_sala: bool = false
 var executando_programa: bool = false
 var _sala_do_programa: int = -1
@@ -61,6 +66,7 @@ func _ready():
 	ia = preload("res://feedback_ia.gd").new()
 	add_child(ia)
 	player.mapa = mapa
+	mapa.player = player
 	player.gerenciador_inimigos = gerenciador_inimigos
 	gerenciador_inimigos.mapa = mapa
 	gerenciador_inimigos.player = player
@@ -533,6 +539,15 @@ func _texto_livro_magias() -> String:
 			linhas.append("  sinal_oraculo guarda o elemento que o Oraculo aceita agora.")
 		linhas.append("")
 	
+	if _em_labirinto():
+		linhas.append("Fase 3")
+		linhas.append("  while condicao:  repete enquanto a condicao for verdadeira.")
+		linhas.append("  for item in lista:  repete uma vez para cada item.")
+		linhas.append("  break sai do laco; continue pula para a proxima volta.")
+		linhas.append("  Sensores: caminho_livre('dir'), inimigo_a_frente('dir'), inimigos_restantes(), minha_vida(), minha_mana()")
+		if sala_atual == SALA_PONTE:
+			linhas.append("  passos guarda o caminho da ponte (uma lista de direcoes).")
+		linhas.append("")
 	if not tutorial.esta_ativo():
 		linhas.append("Grimorio { }  (Ctrl+G)")
 		linhas.append("  Editor de varias linhas: if, for e while com blocos recuados.")
@@ -653,8 +668,9 @@ func _iniciar_sala(indice: int):
 		desafios.reiniciar()
 	if desafios_caverna:
 		desafios_caverna.reiniciar()
-	player.grid_pos = Vector2i(1, 1)
+	player.grid_pos = mapa.inicio_pos
 	player._sincronizar_posicao()
+	mapa.queue_redraw()
 	
 	if indice == SALA_FLORESTA:
 		fase_1_concluida = false
@@ -666,6 +682,16 @@ func _iniciar_sala(indice: int):
 	
 	if indice == SALA_CAVERNA_CHEFE:
 		player.curar_total()
+	
+	if indice == SALA_LABIRINTO:
+		fase_3_concluida = false
+		player.curar_total()
+	
+	if indice == SALA_LABIRINTO_CHEFE:
+		player.curar_total()
+	
+	if indice == SALA_PONTE:
+		interpretador.variaveis["passos"] = mapa.passos_ponte.duplicate()
 	
 	for filho in gerenciador_inimigos.get_children():
 		filho.queue_free()
@@ -688,6 +714,8 @@ func _iniciar_sala(indice: int):
 		_adicionar_saida("------------------------------")
 	elif indice == SALA_CAVERNA_CHEFE:
 		_anunciar_chefe_caverna()
+	elif _em_labirinto():
+		_anunciar_sala_labirinto(indice)
 	
 	_sincronizar_sinal_oraculo()
 
@@ -732,6 +760,18 @@ func _spawnar_inimigos_sala():
 		gerenciador_inimigos.spawnar_chefe_caverna(Vector2i(4, 3))
 		return
 	
+	if sala_atual == SALA_ELOS:
+		for pos in mapa.elos_pos:
+			gerenciador_inimigos.spawnar_elo(pos)
+		return
+	
+	if sala_atual == SALA_LABIRINTO_CHEFE:
+		gerenciador_inimigos.spawnar_ouroboros(Vector2i(4, 3))
+		return
+	
+	if _em_labirinto():
+		return
+	
 	var quantidade = min(sala_atual, 4)
 	var tentativas = 0
 	var spawnados = 0
@@ -756,6 +796,8 @@ func _on_chefe_derrotado():
 	if sala_atual == SALA_CAVERNA_CHEFE:
 		interpretador.variaveis.erase("sinal_oraculo")
 		_adicionar_saida("[chefe] O Oraculo Bifurcado foi silenciado! A saida esta livre.")
+	elif sala_atual == SALA_LABIRINTO_CHEFE:
+		_adicionar_saida("[chefe] O Ouroboros se rompeu! A saida esta livre.")
 	else:
 		_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
 	_adicionar_saida("------------------------------")
@@ -800,6 +842,21 @@ func _on_chegou_na_saida():
 			_adicionar_saida("------------------------------")
 			return
 		_concluir_fase_2()
+		return
+	
+	if sala_atual == SALA_LABIRINTO_CHEFE:
+		if gerenciador_inimigos.chefe_labirinto_vivo():
+			_adicionar_saida("[chefe] O Ouroboros ainda fecha a passagem!")
+			_adicionar_saida("Derrote-o primeiro.")
+			_adicionar_saida("------------------------------")
+			return
+		_concluir_fase_3()
+		return
+	
+	if _em_labirinto() and gerenciador_inimigos.tem_inimigos_vivos():
+		_adicionar_saida("[fase 3] A corrente de Elos ainda bloqueia a passagem.")
+		_adicionar_saida("Parta todos os Elos antes de avancar.")
+		_adicionar_saida("------------------------------")
 		return
 	
 	if _em_caverna() and gerenciador_inimigos.tem_inimigos_vivos():
@@ -869,6 +926,47 @@ func _concluir_fase_2():
 	fase_2_concluida = true
 	_adicionar_saida("[fase 2] Cavernas Condicionais concluidas!")
 	_adicionar_saida("Sua cadeia if / elif / else respondeu a todos os sinais do Oraculo.")
+	_adicionar_saida("Um corredor dourado se abre: o Labirinto dos Lacos espera.")
+	_adicionar_saida("------------------------------")
+	trocando_sala = true
+	await get_tree().create_timer(1.2).timeout
+	if sala_atual == SALA_CAVERNA_CHEFE and player.vivo:
+		await _iniciar_sala(SALA_LABIRINTO)
+	else:
+		trocando_sala = false
+
+func _anunciar_sala_labirinto(indice: int):
+	match indice:
+		SALA_LABIRINTO:
+			_adicionar_saida("[fase 3] Labirinto dos Lacos: Corredor da Nevoa")
+			_adicionar_saida("A nevoa so mostra as casas ao seu lado, e o corredor muda de tamanho a cada visita.")
+			_adicionar_saida("Contar casas nao funciona: repita ENQUANTO houver caminho.")
+			_adicionar_saida("while condicao: repete o bloco enquanto a condicao for verdadeira.")
+			_adicionar_saida("Ex.: while caminho_livre('direita'): mover('direita')")
+			_adicionar_saida("Escreva lacos de varias linhas no grimorio { } (Ctrl+G).")
+		SALA_ELOS:
+			_adicionar_saida("[fase 3] Camara dos Elos")
+			_adicionar_saida("Uma corrente bloqueia o corredor. Golpes soltos nao partem um Elo: so golpes repetidos por um laco.")
+			_adicionar_saida("Voce nao sabe quantos Elos existem. Sensores: inimigo_a_frente('direita') e inimigos_restantes().")
+		SALA_PONTE:
+			_adicionar_saida("[fase 3] Ponte das Listas")
+			_adicionar_saida("A ponte de cristal so sustenta passos ritmados. O caminho esta guardado em uma lista:")
+			_adicionar_saida("passos = " + interpretador._repr(mapa.passos_ponte))
+			_adicionar_saida("for item in lista: repete o bloco uma vez para cada item. Se o laco parar no meio da ponte, ela se desfaz.")
+		SALA_LABIRINTO_CHEFE:
+			_adicionar_saida("[chefe] Ouroboros, a Serpente do Laco, desperta!")
+			_adicionar_saida("Magia reflete nas escamas: so atacar(...) o fere, e so de dentro de um while.")
+			_adicionar_saida("A cauda se renova com o tempo: ninguem sabe quantos golpes serao necessarios.")
+			_adicionar_saida("Se o seu laco terminar antes dele, o Ouroboros se fecha de novo.")
+	_adicionar_saida("------------------------------")
+
+func _concluir_fase_3():
+	if fase_3_concluida:
+		return
+	
+	fase_3_concluida = true
+	_adicionar_saida("[fase 3] Labirinto dos Lacos concluido!")
+	_adicionar_saida("Seu while parou na hora certa: o laco infinito do Ouroboros se rompeu.")
 	_adicionar_saida("Fim da versao jogavel desta etapa.")
 	_adicionar_saida("------------------------------")
 
@@ -1046,9 +1144,14 @@ func _fim_de_programa():
 		var aviso = gerenciador_inimigos.fim_de_programa()
 		if aviso != "":
 			_adicionar_saida(aviso)
+	if sala_atual == SALA_PONTE and player.vivo and mapa.eh_ponte(player.grid_pos):
+		player.grid_pos = mapa.inicio_pos
+		player._sincronizar_posicao()
+		_adicionar_saida("[ponte] O laco terminou no meio da ponte e ela se desfez: voce voltou ao inicio. Atravesse a ponte inteira em um unico laco.")
 
 func _apos_acao_no_mapa():
-	pass
+	if mapa.neblina:
+		mapa.queue_redraw()
 
 func _reiniciar_sala_atual():
 	if tutorial.esta_ativo() or sala_atual == SALA_TUTORIAL:
@@ -1101,6 +1204,10 @@ func _processar_turno_pos_jogador(resposta_jogador: String, escolha_pendente_ant
 	if sala_atual == SALA_CAVERNA_CHEFE and not fase_2_concluida:
 		if player.grid_pos == mapa.saida_pos and not gerenciador_inimigos.chefe_caverna_vivo():
 			_concluir_fase_2()
+	
+	if sala_atual == SALA_LABIRINTO_CHEFE and not fase_3_concluida:
+		if player.grid_pos == mapa.saida_pos and not gerenciador_inimigos.chefe_labirinto_vivo():
+			_concluir_fase_3()
 
 func _recuperar_mana_fim_rodada():
 	var resposta_mana = player.recuperar_mana_rodada()
@@ -1116,7 +1223,12 @@ func _deve_processar_turno_inimigos() -> bool:
 		return not fase_1_concluida
 	if _em_caverna():
 		return not fase_2_concluida
+	if _em_labirinto():
+		return not fase_3_concluida
 	return false
+
+func _em_labirinto() -> bool:
+	return sala_atual >= SALA_LABIRINTO and sala_atual <= SALA_LABIRINTO_CHEFE
 
 func _em_caverna() -> bool:
 	return sala_atual >= SALA_CAVERNA and sala_atual <= SALA_CAVERNA_CHEFE
@@ -1124,6 +1236,8 @@ func _em_caverna() -> bool:
 # Rodadas (recuperacao de mana) valem enquanto a fase atual nao terminou.
 # Antes, qualquer sala depois da floresta ficava sem rodadas.
 func _rodadas_ativas() -> bool:
+	if _em_labirinto():
+		return not fase_3_concluida
 	if _em_caverna():
 		return not fase_2_concluida
 	return not fase_1_concluida
@@ -1200,6 +1314,7 @@ func _reiniciar_run():
 	rascunho_terminal = ""
 	fase_1_concluida = false
 	fase_2_concluida = false
+	fase_3_concluida = false
 	trocando_sala = false
 	player.resetar()
 	interpretador.variaveis.clear()

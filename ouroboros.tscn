@@ -1,0 +1,35 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://ouroboros.gd" id="1"]
+[ext_resource type="Script" path="res://laco_visual.gd" id="2_visual"]
+
+[node name="Ouroboros" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Visual" type="Node2D" parent="."]
+script = ExtResource("2_visual")
+tipo = "ouroboros"
+
+[node name="HPLabel" type="Label" parent="."]
+offset_left = -40.0
+offset_top = -60.0
+offset_right = 40.0
+offset_bottom = -38.0
+theme_override_colors/font_color = Color(0.85, 1, 0.75, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+
+[node name="NomeLabel" type="Label" parent="."]
+offset_left = -60.0
+offset_top = 34.0
+offset_right = 60.0
+offset_bottom = 56.0
+theme_override_colors/font_color = Color(0.8, 0.95, 0.7, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1

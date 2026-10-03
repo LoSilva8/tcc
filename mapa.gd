@@ -25,6 +25,24 @@ const BOSS_SAIDA_AREA_TAMANHO = Vector2i(4, 5)
 const BAU_POS = Vector2i(3, 7)
 const PORTA_POS = Vector2i(8, 5)
 const COMPORTA_POS = Vector2i(7, 4)
+const LAB_FLOOR_A = Color(0.085, 0.125, 0.145)
+const LAB_FLOOR_B = Color(0.1, 0.15, 0.17)
+const LAB_WALL = Color(0.26, 0.21, 0.12)
+const LAB_WALL_DARK = Color(0.11, 0.085, 0.045)
+const LAB_WALL_LIGHT = Color(0.98, 0.78, 0.36, 0.5)
+const SALA_NEBLINA = 9
+const SALA_ELOS = 10
+const SALA_PONTE = 11
+const SALA_OUROBOROS = 12
+const LAYOUT_OUROBOROS = [
+	"#########",
+	"#.......#",
+	"#.#...#.#",
+	"#.......#",
+	"#.#...#.#",
+	"#......E#",
+	"#########",
+]
 var bau_aberto = false
 var porta_aberta = false
 var comporta_aberta = false
@@ -33,6 +51,12 @@ var paredes: Array = []
 var saida_pos: Vector2i = Vector2i(-1, -1)
 var sala_atual: int = 0
 var layout_atual: Array = []
+var player: Node = null
+var inicio_pos: Vector2i = Vector2i(1, 1)
+var neblina: bool = false
+var ponte: Dictionary = {}
+var passos_ponte: Array = []
+var elos_pos: Array = []
 
 signal jogador_na_saida
 
@@ -139,11 +163,28 @@ func carregar_sala(indice: int):
 	paredes.clear()
 	saida_pos = Vector2i(-1, -1)
 
+	inicio_pos = Vector2i(1, 1)
+	neblina = false
+	ponte.clear()
+	passos_ponte = []
+	elos_pos = []
+
 	var layout = []
-	if indice < layouts.size():
-		layout = layouts[indice]
-	else:
-		layout = _gerar_layout_aleatorio()
+	match indice:
+		SALA_NEBLINA:
+			layout = _gerar_corredor_neblina()
+			neblina = true
+		SALA_ELOS:
+			layout = _gerar_camara_elos()
+		SALA_PONTE:
+			layout = _gerar_ponte()
+		SALA_OUROBOROS:
+			layout = LAYOUT_OUROBOROS
+		_:
+			if indice < layouts.size():
+				layout = layouts[indice]
+			else:
+				layout = _gerar_layout_aleatorio()
 
 	layout_atual = layout
 	_construir_sala(layout)
@@ -176,6 +217,9 @@ func _draw():
 	elif _eh_caverna():
 		draw_rect(sala_rect.grow(18), Color(0.045, 0.03, 0.07))
 		draw_rect(sala_rect.grow(6), Color(0.42, 0.26, 0.6, 0.45), false, 3.0)
+	elif _eh_labirinto():
+		draw_rect(sala_rect.grow(18), Color(0.03, 0.04, 0.045))
+		draw_rect(sala_rect.grow(6), Color(0.9, 0.7, 0.3, 0.4), false, 3.0)
 	else:
 		draw_rect(sala_rect.grow(18), Color(0.025, 0.028, 0.036))
 		draw_rect(sala_rect.grow(6), Color(0.16, 0.23, 0.25, 0.45), false, 3.0)
@@ -187,18 +231,26 @@ func _draw():
 			var cel = layout_atual[y].substr(x, 1)
 
 			if cel == "#":
-				_desenhar_parede(rect)
+				if sala_atual == SALA_PONTE and x > 0 and y > 0 and x < colunas - 1 and y < linhas - 1:
+					_desenhar_abismo(rect, x, y)
+				else:
+					_desenhar_parede(rect)
 			elif cel == "E":
 				_desenhar_chao(rect, x, y)
 				_desenhar_saida(rect)
 			else:
 				_desenhar_chao(rect, x, y)
+				if ponte.has(Vector2i(x, y)):
+					_desenhar_cristal_ponte(rect)
 
 	if _eh_floresta():
 		_desenhar_area_boss_saida()
 		_desenhar_desafios()
 	elif sala_atual == 5:
 		_desenhar_comporta()
+
+	if neblina and player:
+		_desenhar_neblina(linhas, colunas)
 
 	for x in range(colunas + 1):
 		var px = x * TAMANHO_CELULA
@@ -213,6 +265,8 @@ func _desenhar_chao(rect: Rect2, x: int, y: int):
 		base = FOREST_FLOOR_A if (x + y) % 2 == 0 else FOREST_FLOOR_B
 	elif _eh_caverna():
 		base = CAVE_FLOOR_A if (x + y) % 2 == 0 else CAVE_FLOOR_B
+	elif _eh_labirinto():
+		base = LAB_FLOOR_A if (x + y) % 2 == 0 else LAB_FLOOR_B
 	draw_rect(rect, base)
 	draw_rect(rect.grow(-8), Color(1, 1, 1, 0.018))
 	if _eh_floresta():
@@ -238,6 +292,10 @@ func _desenhar_parede(rect: Rect2):
 		parede_escura = CAVE_WALL_DARK
 		parede = CAVE_WALL
 		brilho = CAVE_WALL_LIGHT
+	elif _eh_labirinto():
+		parede_escura = LAB_WALL_DARK
+		parede = LAB_WALL
+		brilho = LAB_WALL_LIGHT
 	draw_rect(rect, parede_escura)
 	draw_rect(rect.grow(-4), parede)
 	draw_line(rect.position + Vector2(7, 8), rect.position + Vector2(rect.size.x - 8, 8), brilho, 2.0)
@@ -351,6 +409,127 @@ func _eh_floresta() -> bool:
 
 func _eh_caverna() -> bool:
 	return sala_atual >= 5 and sala_atual <= 8
+
+func _eh_labirinto() -> bool:
+	return sala_atual >= SALA_NEBLINA and sala_atual <= SALA_OUROBOROS
+
+func eh_ponte(pos: Vector2i) -> bool:
+	return sala_atual == SALA_PONTE and ponte.has(pos)
+
+# ─── Labirinto dos Lacos: salas geradas a cada visita ────────────────
+
+func _grade(colunas: int, linhas: int) -> Array:
+	var grade: Array = []
+	for y in range(linhas):
+		var linha: Array = []
+		for x in range(colunas):
+			linha.append("#")
+		grade.append(linha)
+	return grade
+
+func _grade_para_layout(grade: Array) -> Array:
+	var layout: Array = []
+	for linha in grade:
+		layout.append("".join(linha))
+	return layout
+
+# Corredor em Z (direita, baixo, direita) com tamanhos sorteados: como a nevoa
+# esconde o caminho e ele muda a cada visita, contar casas nao funciona.
+func _gerar_corredor_neblina() -> Array:
+	var a = randi_range(4, 8)
+	var b = randi_range(2, 4)
+	var c = randi_range(2, 4)
+	var grade = _grade(a + c + 2, b + 3)
+	for x in range(1, a + 1):
+		grade[1][x] = "."
+	for y in range(1, b + 2):
+		grade[y][a] = "."
+	for x in range(a, a + c + 1):
+		grade[b + 1][x] = "."
+	grade[b + 1][a + c] = "E"
+	return _grade_para_layout(grade)
+
+# Corredor de uma casa de largura com uma corrente de 4 a 6 Elos.
+func _gerar_camara_elos() -> Array:
+	var k = randi_range(4, 6)
+	var colunas = k + 7
+	var grade = _grade(colunas, 3)
+	for x in range(1, colunas - 1):
+		grade[1][x] = "."
+	grade[1][colunas - 2] = "E"
+	elos_pos = []
+	for i in range(k):
+		elos_pos.append(Vector2i(3 + i, 1))
+	return _grade_para_layout(grade)
+
+# Ponte sorteada sobre o abismo; o caminho fica na lista passos_ponte.
+func _gerar_ponte() -> Array:
+	var n = randi_range(6, 8)
+	var linhas = 7
+	var pos = Vector2i(1, 3)
+	var caminho: Array = [pos]
+	var passos: Array = []
+	var ultimo_vertical = ""
+	var verticais_seguidos = 0
+	for i in range(n):
+		var opcoes: Array = ["direita", "direita"]
+		if verticais_seguidos < 2 and pos.y > 1 and ultimo_vertical != "baixo":
+			opcoes.append("cima")
+		if verticais_seguidos < 2 and pos.y < linhas - 2 and ultimo_vertical != "cima":
+			opcoes.append("baixo")
+		if i == n - 1:
+			opcoes = ["direita"]
+		var d = opcoes[randi() % opcoes.size()]
+		match d:
+			"direita":
+				pos.x += 1
+				ultimo_vertical = ""
+				verticais_seguidos = 0
+			"cima":
+				pos.y -= 1
+				ultimo_vertical = "cima"
+				verticais_seguidos += 1
+			"baixo":
+				pos.y += 1
+				ultimo_vertical = "baixo"
+				verticais_seguidos += 1
+		passos.append(d)
+		caminho.append(pos)
+	var grade = _grade(pos.x + 2, linhas)
+	for celula in caminho:
+		grade[celula.y][celula.x] = "."
+	var fim: Vector2i = caminho.back()
+	grade[fim.y][fim.x] = "E"
+	inicio_pos = caminho[0]
+	passos_ponte = passos
+	for i in range(1, caminho.size() - 1):
+		ponte[caminho[i]] = true
+	return _grade_para_layout(grade)
+
+func _desenhar_abismo(rect: Rect2, x: int, y: int):
+	draw_rect(rect, Color(0.012, 0.016, 0.03))
+	var brilho = _tile_hash(x, y, 7) % 100
+	if brilho < 35:
+		var p = rect.position + Vector2(8 + _tile_hash(x, y, 8) % 48, 8 + _tile_hash(x, y, 9) % 48)
+		draw_circle(p, 1.2, Color(0.75, 0.82, 1.0, 0.5))
+
+func _desenhar_cristal_ponte(rect: Rect2):
+	var c = rect.position + rect.size / 2
+	draw_rect(rect.grow(-6), Color(0.35, 0.75, 0.95, 0.16))
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -14), c + Vector2(14, 0), c + Vector2(0, 14), c + Vector2(-14, 0)]), Color(0.45, 0.85, 1.0, 0.35))
+	draw_polyline(PackedVector2Array([c + Vector2(0, -14), c + Vector2(14, 0), c + Vector2(0, 14), c + Vector2(-14, 0), c + Vector2(0, -14)]), Color(0.75, 0.95, 1.0, 0.7), 1.5)
+
+# Nevoa: so as casas a 1 passo do mago ficam visiveis.
+func _desenhar_neblina(linhas: int, colunas: int):
+	var centro: Vector2i = player.grid_pos
+	for y in range(linhas):
+		for x in range(colunas):
+			if absi(x - centro.x) + absi(y - centro.y) <= 1:
+				continue
+			var rect = Rect2(Vector2(x, y) * TAMANHO_CELULA, Vector2(TAMANHO_CELULA, TAMANHO_CELULA))
+			draw_rect(rect, Color(0.02, 0.028, 0.035, 0.94))
+			if _tile_hash(x, y, 4) % 3 == 0:
+				draw_arc(rect.get_center(), 14, 0.3, 2.4, 10, Color(0.45, 0.55, 0.6, 0.12), 2.0)
 
 func area_boss_saida_inicio() -> Vector2i:
 	return BOSS_SAIDA_AREA_INICIO

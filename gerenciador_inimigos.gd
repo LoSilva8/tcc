@@ -6,6 +6,8 @@ const InimigoElementalCena = preload("res://inimigo_elemental.tscn")
 const ChefeFlorestaCena = preload("res://chefe_floresta.tscn")
 const ChefeCavernaCena = preload("res://chefe_caverna.tscn")
 const BossSaidaCena = preload("res://boss_saida.tscn")
+const EloCena = preload("res://elo.tscn")
+const OuroborosCena = preload("res://ouroboros.tscn")
 const TAMANHO_CELULA = 64
 const PASSOS = [
 	Vector2i(1, 0),
@@ -77,6 +79,50 @@ func spawnar_chefe_caverna(pos: Vector2i):
 	chefe.chefe_derrotado.connect(func(): emit_signal("chefe_derrotado"))
 	inimigos[pos] = chefe
 
+func spawnar_elo(pos: Vector2i):
+	if pos in inimigos:
+		return
+	if mapa and mapa.eh_parede(pos):
+		return
+	var elo = EloCena.instantiate()
+	add_child(elo)
+	elo.inicializar(pos)
+	inimigos[pos] = elo
+
+func spawnar_ouroboros(pos: Vector2i):
+	if pos in inimigos:
+		return
+	if mapa and mapa.eh_parede(pos):
+		return
+	var serpente = OuroborosCena.instantiate()
+	add_child(serpente)
+	serpente.inicializar(pos)
+	serpente.chefe_derrotado.connect(func(): emit_signal("chefe_derrotado"))
+	inimigos[pos] = serpente
+
+func chefe_labirinto_vivo() -> bool:
+	for pos in inimigos:
+		var i = inimigos[pos]
+		if i.get_script() == preload("res://ouroboros.gd") and i.vivo:
+			return true
+	return false
+
+# Efeitos que dependem do fim de um programa (ex.: o Ouroboros se fecha de novo).
+func fim_de_programa() -> String:
+	var avisos: Array = []
+	for pos in inimigos.keys():
+		var i = inimigos[pos]
+		if i.vivo and i.has_method("ao_fim_do_programa"):
+			var aviso = i.ao_fim_do_programa()
+			if aviso != "":
+				avisos.append(aviso)
+	return "\n".join(avisos)
+
+func _laco_ativo(so_while: bool) -> bool:
+	if player == null or player.interpretador == null:
+		return false
+	return player.interpretador.dentro_de_while() if so_while else player.interpretador.dentro_de_laco()
+
 func spawnar_boss_saida(pos: Vector2i, area_inicio: Vector2i, area_tamanho: Vector2i):
 	if pos in inimigos:
 		return
@@ -137,6 +183,10 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 				resultado = "Ataques comuns nao ecoam no Oraculo Bifurcado.\nUse fireball(variavel, 'direcao') com o elemento certo."
 			else:
 				resultado = inimigo.receber_dano(dano, nome_variavel, encadeado)
+		elif inimigo.get_script() == preload("res://elo.gd"):
+			resultado = inimigo.receber_dano(dano, _laco_ativo(false))
+		elif inimigo.get_script() == preload("res://ouroboros.gd"):
+			resultado = inimigo.receber_dano(dano, usando_variavel, _laco_ativo(true))
 		elif inimigo.get_script() == preload("res://inimigo_escudo.gd"):
 			resultado = inimigo.receber_dano(dano, usando_variavel)
 		elif inimigo.get_script() == preload("res://inimigo_elemental.gd"):
@@ -189,6 +239,11 @@ func processar_turno_inimigos() -> String:
 		if not inimigo.vivo:
 			inimigos.erase(pos_atual)
 			continue
+		if inimigo.has_method("turno_especial"):
+			var evento = inimigo.turno_especial(player)
+			if evento != "":
+				eventos.append(evento)
+			continue
 		if inimigo.has_method("pode_agir_contra") and not inimigo.pode_agir_contra(player.grid_pos):
 			continue
 
@@ -229,6 +284,10 @@ func _nome_inimigo(inimigo: Node) -> String:
 		return "Guardiao de Runas"
 	if inimigo.get_script() == preload("res://chefe_caverna.gd"):
 		return "Oraculo Bifurcado"
+	if inimigo.get_script() == preload("res://elo.gd"):
+		return "Elo"
+	if inimigo.get_script() == preload("res://ouroboros.gd"):
+		return "Ouroboros"
 	if inimigo.has_method("eh_boss_saida") and inimigo.eh_boss_saida():
 		return "Guardiao da Saida"
 	return "Sentinela da Floresta"

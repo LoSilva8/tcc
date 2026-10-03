@@ -136,7 +136,12 @@ func _mover(direcao: String) -> String:
 			return "Bloqueado. Para abrir o bau, digite desafio(bau)."
 		if mapa.sala_atual == 5 and nova_pos == mapa.COMPORTA_POS:
 			return "Bloqueado. Para estabilizar a comporta, digite desafio(comporta)."
+		if mapa.has_method("eh_ponte") and mapa.sala_atual == mapa.SALA_PONTE:
+			return "Bloqueado. Ali so ha abismo: siga a ponte de cristal."
 		return "Bloqueado. Ha uma parede nessa direcao."
+	
+	if mapa and mapa.has_method("eh_ponte") and mapa.eh_ponte(nova_pos) and not (interpretador and interpretador.dentro_de_laco()):
+		return "Bloqueado. A ponte de cristal nao sustenta passos soltos: atravesse com um laco, ex.: for passo in passos: mover(passo)"
 	
 	if gerenciador_inimigos and gerenciador_inimigos.tem_inimigo(nova_pos):
 		return _receber_dano(1, "Voce colidiu com um inimigo.")
