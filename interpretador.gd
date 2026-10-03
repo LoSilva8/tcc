@@ -1,355 +1,1136 @@
 extends Node
 
+# Interpretador de um subconjunto real de Python para o PyAdventure.
+#
+# Fluxo: texto -> tokens (com INDENT/DEDENT, como o Python) -> arvore -> execucao.
+# A execucao e uma corrotina: cada ACAO (mover, atacar, fireball) e um turno do
+# jogo e, entre duas acoes, o interpretador espera `atraso_entre_acoes` segundos
+# para o jogador ver o laco acontecendo. Programas com uma acao so terminam no
+# mesmo frame (o `await` nao pausa), entao comandos simples continuam instantaneos.
+
+signal linha_executando(linha: int)
+
+const ACOES_COM_TURNO = ["mover", "atacar", "fireball"]
+const COMANDOS = ["mover", "atacar", "fireball", "escolher", "print"]
+const PALAVRAS_RESERVADAS = ["if", "elif", "else", "for", "while", "in", "not", "and", "or",
+	"break", "continue", "pass", "True", "False", "None", "def", "return", "class",
+	"import", "lambda", "try", "except", "with", "global", "del", "is", "yield"]
+const DIRECOES = {
+	"direita": Vector2i(1, 0),
+	"esquerda": Vector2i(-1, 0),
+	"cima": Vector2i(0, -1),
+	"baixo": Vector2i(0, 1),
+}
+const MAX_ACOES = 80
+const MAX_PASSOS = 3000
+const MAX_FALHAS_SEGUIDAS = 3
+const MAX_RANGE = 100
+
 var variaveis: Dictionary = {}
 var player: Node = null
 var ultimo_encadeado: bool = false
+var atraso_entre_acoes: float = 0.0
+var ao_agir: Callable
+var ao_escrever: Callable
+var executando: bool = false
 
-func executar(linha: String) -> String:
-	linha = linha.strip_edges()
-	if linha == "":
-		return ""
+var _tokens: Array = []
+var _pos: int = 0
+var _erro: String = ""
+var _erro_linha: int = 0
+var _erro_tipo: String = ""
+var _erro_cru: bool = false
+var _sinal: String = ""
+var _saidas: Array = []
+var _acoes: int = 0
+var _passos: int = 0
+var _falhas_seguidas: int = 0
+var _profundidade_cadeia: int = 0
+var _profundidade_laco: int = 0
+var _profundidade_while: int = 0
+var _cancelar: bool = false
+var _multilinha: bool = false
 
-	ultimo_encadeado = false
+# ─── API publica ────────────────────────────────────────────────────
 
-	if linha.begins_with("for "):
-		return _processar_for(linha)
+func executar(codigo: String) -> String:
+	_preparar_execucao()
+	_multilinha = codigo.strip_edges().contains("\n")
+	var programa = _compilar(codigo)
+	if _erro != "":
+		_escrever(_mensagem_erro())
+		executando = false
+		return "\n".join(_saidas)
+	await _exec_bloco(programa)
+	executando = false
+	return "\n".join(_saidas)
 
-	if linha.begins_with("if "):
-		return _processar_if(linha)
+func cancelar_execucao():
+	if executando:
+		_cancelar = true
 
-	if _eh_atribuicao(linha):
-		return _processar_atribuicao(linha)
+func dentro_de_laco() -> bool:
+	return _profundidade_laco > 0
 
-	return _executar_comando(linha)
+func dentro_de_while() -> bool:
+	return _profundidade_while > 0
 
-# ─── IF/ELIF/ELSE ────────────────────────────────────────
-
-func _processar_if(linha: String) -> String:
-	var comando = escolher_ramo_condicional(linha)
-
-	if comando == null:
-		return "Erro de sintaxe! Use: if condicao: comando (opcionalmente elif condicao: comando, e else: comando)"
-
-	if comando == "":
-		return "Condição falsa — nenhuma ação executada."
-
-	# Um ramo pode conter uma atribuicao (ex.: if x > 2: poder = 3)
-	if _eh_atribuicao(comando):
-		return _processar_atribuicao(comando)
-
-	return _executar_comando(comando)
-
-# Analisa uma cadeia if/elif/else em UMA linha e devolve o comando do ramo
-# escolhido, sem executa-lo. Retorna null em erro de sintaxe, ou "" se
-# nenhuma condicao bateu (e nao havia else). Tambem atualiza
-# ultimo_encadeado: true quando a linha usou elif e/ou else.
-func escolher_ramo_condicional(linha: String):
-	if not linha.begins_with("if "):
-		return null
-
-	var clausulas = _dividir_clausulas(linha)
-	if clausulas == null or clausulas.is_empty() or clausulas[0]["tipo"] != "if":
-		return null
-
-	ultimo_encadeado = clausulas.size() > 1
-
-	for c in clausulas:
-		if c["tipo"] == "else":
-			return c["comando"]
-		if _avaliar_condicao(c["condicao"]):
-			return c["comando"]
-
-	return ""
-
-func _dividir_clausulas(linha: String):
-	var restante = linha
-	var clausulas: Array = []
-
-	while true:
-		if restante.begins_with("if ") or restante.begins_with("elif "):
-			var tipo = "if" if restante.begins_with("if ") else "elif"
-			var corpo = restante.substr(3 if tipo == "if" else 5)
-			var pos_dp = corpo.find(":")
-			if pos_dp == -1:
-				return null
-
-			var condicao = corpo.substr(0, pos_dp).strip_edges()
-			var resto = corpo.substr(pos_dp + 1).strip_edges()
-			var prox = _achar_proxima_clausula(resto)
-			var comando = ""
-
-			if prox == -1:
-				comando = resto.strip_edges()
-				restante = ""
-			else:
-				comando = resto.substr(0, prox).strip_edges()
-				restante = resto.substr(prox).strip_edges()
-
-			if comando == "" or condicao == "":
-				return null
-
-			clausulas.append({"tipo": tipo, "condicao": condicao, "comando": comando})
-			if restante == "":
-				break
-		elif restante.begins_with("else:"):
-			var comando_else = restante.substr(5).strip_edges()
-			if comando_else == "":
-				return null
-			clausulas.append({"tipo": "else", "condicao": "", "comando": comando_else})
-			break
-		else:
-			return null
-
-	return clausulas
-
-func _achar_proxima_clausula(texto: String) -> int:
-	var idx_elif = texto.find(" elif ")
-	var idx_else = texto.find(" else:")
-	if idx_elif == -1 and idx_else == -1:
-		return -1
-	if idx_elif == -1:
-		return idx_else + 1
-	if idx_else == -1:
-		return idx_elif + 1
-	return min(idx_elif, idx_else) + 1
-
+# Usado pelos desafios (bau/porta, comporta) para testar uma condicao isolada.
 func _avaliar_condicao(condicao: String) -> bool:
-	condicao = condicao.strip_edges()
-
-	# Operadores logicos (or tem precedencia mais baixa que and, como em Python)
-	if " or " in condicao:
-		for parte in condicao.split(" or ", false):
-			if _avaliar_condicao(parte):
-				return true
+	_erro = ""
+	_tokens = _tokenizar(condicao.strip_edges())
+	if _erro != "":
 		return false
+	_pos = 0
+	var no = _parse_expr()
+	if _erro != "":
+		return false
+	var resultado = _verdadeiro(_avaliar(no))
+	return resultado and _erro == ""
 
-	if " and " in condicao:
-		for parte in condicao.split(" and ", false):
-			if not _avaliar_condicao(parte):
-				return false
+# ─── Preparacao ─────────────────────────────────────────────────────
+
+func _preparar_execucao():
+	executando = true
+	_erro = ""
+	_erro_linha = 0
+	_erro_tipo = ""
+	_erro_cru = false
+	_sinal = ""
+	_saidas = []
+	_acoes = 0
+	_passos = 0
+	_falhas_seguidas = 0
+	_profundidade_cadeia = 0
+	_profundidade_laco = 0
+	_profundidade_while = 0
+	_cancelar = false
+
+func _compilar(codigo: String) -> Array:
+	_tokens = _tokenizar(codigo)
+	if _erro != "":
+		return []
+	_pos = 0
+	var programa: Array = []
+	while _ver().t != "FIM" and _erro == "":
+		var s = _parse_stmt()
+		if _erro != "":
+			return []
+		programa.append(s)
+	return programa
+
+# ─── Tokens ─────────────────────────────────────────────────────────
+
+func _tok(tipo: String, valor, linha: int) -> Dictionary:
+	return {"t": tipo, "v": valor, "l": linha}
+
+func _tokenizar(codigo: String) -> Array:
+	var toks: Array = []
+	var linhas = codigo.replace("\r", "").replace("\t", "    ").split("\n")
+	var pilha: Array = [0]
+	var profundidade = 0
+	for n in range(linhas.size()):
+		var linha: String = linhas[n]
+		var num = n + 1
+		var i = 0
+		if profundidade == 0:
+			var conteudo = linha.strip_edges()
+			if conteudo == "" or conteudo.begins_with("#"):
+				continue
+			var recuo = 0
+			while recuo < linha.length() and linha[recuo] == " ":
+				recuo += 1
+			if recuo > pilha.back():
+				pilha.append(recuo)
+				toks.append(_tok("INDENT", "", num))
+			else:
+				while recuo < pilha.back():
+					pilha.pop_back()
+					toks.append(_tok("DEDENT", "", num))
+				if recuo != pilha.back():
+					_definir_erro("O recuo desta linha nao combina com nenhum bloco acima. Use multiplos de 4 espacos.", num, "sintaxe")
+					return []
+			i = recuo
+		while i < linha.length():
+			var c = linha[i]
+			if c == " ":
+				i += 1
+				continue
+			if c == "#":
+				break
+			if _letra(c):
+				var j = i
+				while j < linha.length() and (_letra(linha[j]) or _digito(linha[j])):
+					j += 1
+				toks.append(_tok("NOME", linha.substr(i, j - i), num))
+				i = j
+				continue
+			if _digito(c):
+				var j = i
+				var tem_ponto = false
+				while j < linha.length():
+					if _digito(linha[j]):
+						j += 1
+					elif linha[j] == "." and not tem_ponto and j + 1 < linha.length() and _digito(linha[j + 1]):
+						tem_ponto = true
+						j += 1
+					else:
+						break
+				var texto_num = linha.substr(i, j - i)
+				toks.append(_tok("NUM", texto_num.to_float() if tem_ponto else texto_num.to_int(), num))
+				i = j
+				continue
+			if c == "'" or c == "\"":
+				var j = i + 1
+				var valor = ""
+				var fechou = false
+				while j < linha.length():
+					var d = linha[j]
+					if d == "\\" and j + 1 < linha.length():
+						var e = linha[j + 1]
+						valor += "\n" if e == "n" else e
+						j += 2
+						continue
+					if d == c:
+						fechou = true
+						break
+					valor += d
+					j += 1
+				if not fechou:
+					_definir_erro("Faltou fechar as aspas do texto. Abra e feche com o mesmo tipo: 'assim' ou \"assim\".", num, "sintaxe")
+					return []
+				toks.append(_tok("STR", valor, num))
+				i = j + 1
+				continue
+			var dois = linha.substr(i, 2)
+			if dois in ["==", "!=", "<=", ">=", "//", "+=", "-=", "*="]:
+				toks.append(_tok("OP", dois, num))
+				i += 2
+				continue
+			if c in "+-*/%<>=()[],:":
+				if c == "(" or c == "[":
+					profundidade += 1
+				elif c == ")" or c == "]":
+					profundidade = max(profundidade - 1, 0)
+				toks.append(_tok("OP", c, num))
+				i += 1
+				continue
+			_definir_erro("Simbolo inesperado: " + c, num, "sintaxe")
+			return []
+		if profundidade == 0:
+			toks.append(_tok("NL", "", num))
+	if profundidade > 0:
+		_definir_erro("Faltou fechar um parentese ( ou colchete [.", linhas.size(), "sintaxe")
+		return []
+	var ultima = linhas.size()
+	while pilha.size() > 1:
+		pilha.pop_back()
+		toks.append(_tok("DEDENT", "", ultima))
+	toks.append(_tok("FIM", "", ultima))
+	return toks
+
+func _letra(c: String) -> bool:
+	return (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or c == "_"
+
+func _digito(c: String) -> bool:
+	return c >= "0" and c <= "9"
+
+# ─── Parser ─────────────────────────────────────────────────────────
+
+func _ver(offset: int = 0) -> Dictionary:
+	if _tokens.is_empty():
+		return _tok("FIM", "", 0)
+	return _tokens[min(_pos + offset, _tokens.size() - 1)]
+
+func _avancar() -> Dictionary:
+	var t = _ver()
+	if _pos < _tokens.size() - 1:
+		_pos += 1
+	return t
+
+func _eh(tipo: String, valor = null, offset: int = 0) -> bool:
+	var t = _ver(offset)
+	return t.t == tipo and (valor == null or t.v == valor)
+
+func _esperar_op(valor: String, mensagem: String) -> bool:
+	if _eh("OP", valor):
+		_avancar()
 		return true
-
-	condicao = _resolver_variaveis(condicao).strip_edges()
-
-	# Suporte a operadores de comparação
-	var operadores = ["==", "!=", ">=", "<=", ">", "<"]
-	for op in operadores:
-		if op in condicao:
-			var partes = condicao.split(op, false, 1)
-			if partes.size() == 2:
-				var esq = _limpar_valor(partes[0].strip_edges())
-				var dir = _limpar_valor(partes[1].strip_edges())
-				return _comparar(esq, dir, op)
-
-	# Suporte a "not x"
-	if condicao.begins_with("not "):
-		var valor = _limpar_valor(condicao.substr(4).strip_edges())
-		return not _eh_verdadeiro(valor)
-
-	# Valor direto (truthy/falsy)
-	return _eh_verdadeiro(_limpar_valor(condicao))
-
-func _comparar(esq, dir, op: String) -> bool:
-	match op:
-		"==": return esq == dir
-		"!=": return esq != dir
-		">":  return float(str(esq)) > float(str(dir))
-		"<":  return float(str(esq)) < float(str(dir))
-		">=": return float(str(esq)) >= float(str(dir))
-		"<=": return float(str(esq)) <= float(str(dir))
+	_definir_erro(mensagem, _ver().l, "sintaxe")
 	return false
 
-func _eh_verdadeiro(valor) -> bool:
-	if typeof(valor) == TYPE_BOOL:
-		return valor
-	if typeof(valor) == TYPE_INT or typeof(valor) == TYPE_FLOAT:
-		return valor != 0
-	if typeof(valor) == TYPE_STRING:
-		return valor != "" and valor != "False" and valor != "None"
-	return false
+func _esperar_fim_de_linha():
+	if _eh("NL"):
+		_avancar()
+		return
+	if _eh("FIM") or _eh("DEDENT"):
+		return
+	if _eh("NOME") and _ver().v in ["elif", "else"]:
+		_definir_erro("Em Python, " + _ver().v + " comeca em uma linha nova, alinhado com o if. Abra o grimorio ({ }) para escrever varias linhas.", _ver().l, "sintaxe")
+		return
+	if _eh("OP", "="):
+		_definir_erro("Um = sozinho guarda valor. Para comparar use ==.", _ver().l, "sintaxe")
+		return
+	_definir_erro("Algo sobrou no fim da linha: '" + str(_ver().v) + "'. Cada linha deve ter um unico comando.", _ver().l, "sintaxe")
 
-func _limpar_valor(valor: String):
-	# Remove aspas de strings
-	if (valor.begins_with("'") and valor.ends_with("'")) or \
-	   (valor.begins_with('"') and valor.ends_with('"')):
-		return valor.substr(1, valor.length() - 2)
-	# Converte número
-	if valor.is_valid_int():
-		return valor.to_int()
-	if valor.is_valid_float():
-		return valor.to_float()
-	# Booleanos Python
-	if valor == "True": return true
-	if valor == "False": return false
-	return valor
+func _parse_stmt() -> Dictionary:
+	var t = _ver()
+	if t.t == "INDENT":
+		_definir_erro("Recuo inesperado: esta linha esta mais para dentro, mas nao ha if, for ou while acima dela.", t.l, "sintaxe")
+		return {}
+	if t.t == "NOME":
+		match t.v:
+			"if":
+				return _parse_if()
+			"while":
+				return _parse_while()
+			"for":
+				return _parse_for()
+			"elif", "else":
+				_definir_erro("'" + t.v + "' apareceu sem um if antes. Ele precisa ficar alinhado com o if do mesmo bloco.", t.l, "sintaxe")
+				return {}
+			"def", "return":
+				_definir_erro("'" + t.v + "' sera liberado na Torre das Funcoes.", t.l, "sintaxe")
+				return {}
+	var s = _parse_simples()
+	if _erro != "":
+		return {}
+	_esperar_fim_de_linha()
+	return s
 
-# ─── FOR ────────────────────────────────────────────────
+func _parse_simples() -> Dictionary:
+	var t = _ver()
+	if t.t == "NOME":
+		match t.v:
+			"pass", "break", "continue":
+				_avancar()
+				return {"t": t.v, "l": t.l}
+			"if", "for", "while":
+				_definir_erro("Um bloco " + t.v + " dentro de outro precisa comecar em uma linha nova, com recuo.", t.l, "sintaxe")
+				return {}
+		if _eh("OP", "=", 1):
+			if t.v in PALAVRAS_RESERVADAS:
+				_definir_erro("'" + t.v + "' e uma palavra reservada do Python e nao pode ser nome de variavel.", t.l, "sintaxe")
+				return {}
+			_avancar()
+			_avancar()
+			var expr = _parse_expr()
+			return {"t": "atrib", "nome": t.v, "expr": expr, "l": t.l}
+		if _ver(1).t == "OP" and _ver(1).v in ["+=", "-=", "*="]:
+			_avancar()
+			var op = _avancar().v
+			var expr2 = _parse_expr()
+			return {"t": "atrib_op", "nome": t.v, "op": op.substr(0, 1), "expr": expr2, "l": t.l}
+	var e = _parse_expr()
+	return {"t": "expr", "expr": e, "l": t.l}
 
-func _processar_for(linha: String) -> String:
-	var regex = RegEx.new()
-	regex.compile("for\\s+(\\w+)\\s+in\\s+range\\((.+)\\):\\s*(.+)")
-	var resultado = regex.search(linha)
+func _parse_bloco(cabecalho: String) -> Array:
+	if not _esperar_op(":", "Faltou ':' no fim do " + cabecalho + ". Ex.: " + cabecalho + " ...:"):
+		return []
+	if _eh("NL"):
+		_avancar()
+		if not _eh("INDENT"):
+			_definir_erro("Depois de '" + cabecalho + " ...:' a linha de baixo precisa de recuo (4 espacos).", _ver().l, "sintaxe")
+			return []
+		_avancar()
+		var corpo: Array = []
+		while not _eh("DEDENT") and not _eh("FIM") and _erro == "":
+			corpo.append(_parse_stmt())
+		if _eh("DEDENT"):
+			_avancar()
+		return corpo
+	var s = _parse_simples()
+	if _erro != "":
+		return []
+	_esperar_fim_de_linha()
+	return [s]
 
-	if not resultado:
-		return "Erro de sintaxe! Use: for i in range(3): mover('direita')"
+func _parse_condicao(cabecalho: String):
+	var cond = _parse_expr()
+	if _erro == "" and _eh("OP", "="):
+		_definir_erro("No " + cabecalho + ", para comparar use ==. Um = sozinho guarda valor.", _ver().l, "sintaxe")
+	return cond
 
-	var variavel_loop = resultado.get_string(1)
-	var arg_range = resultado.get_string(2).strip_edges()
-	var comando = resultado.get_string(3).strip_edges()
+func _parse_if() -> Dictionary:
+	var linha = _avancar().l
+	var clausulas: Array = []
+	var cond = _parse_condicao("if")
+	if _erro != "":
+		return {}
+	clausulas.append({"cond": cond, "corpo": _parse_bloco("if")})
+	while _erro == "" and _eh("NOME", "elif"):
+		_avancar()
+		var c2 = _parse_condicao("elif")
+		if _erro != "":
+			return {}
+		clausulas.append({"cond": c2, "corpo": _parse_bloco("elif")})
+	var senao = null
+	if _erro == "" and _eh("NOME", "else"):
+		_avancar()
+		senao = _parse_bloco("else")
+	return {"t": "if", "clausulas": clausulas, "senao": senao, "l": linha}
 
-	var repeticoes = _resolver_numero(arg_range)
-	if repeticoes < 0:
-		return "Erro: '" + arg_range + "' não é um número válido para range()"
-	if repeticoes > 20:
-		return "Erro: range() muito grande! Use no máximo 20."
+func _parse_while() -> Dictionary:
+	var linha = _avancar().l
+	var cond = _parse_condicao("while")
+	if _erro != "":
+		return {}
+	return {"t": "while", "cond": cond, "corpo": _parse_bloco("while"), "l": linha}
 
-	var saidas: Array = []
-	for i in range(repeticoes):
-		variaveis[variavel_loop] = i
-		var resposta = _executar_comando(comando)
-		saidas.append("  [" + str(i) + "] " + resposta)
+func _parse_for() -> Dictionary:
+	var linha = _avancar().l
+	if not _eh("NOME") or _ver().v in PALAVRAS_RESERVADAS:
+		_definir_erro("Depois de for vem o nome de uma variavel. Ex.: for passo in passos:", linha, "sintaxe")
+		return {}
+	var nome = _avancar().v
+	if not _eh("NOME", "in"):
+		_definir_erro("Faltou o 'in' no for. Ex.: for " + nome + " in range(3):", linha, "sintaxe")
+		return {}
+	_avancar()
+	var iteravel = _parse_expr()
+	if _erro != "":
+		return {}
+	return {"t": "for", "var": nome, "iter": iteravel, "corpo": _parse_bloco("for"), "l": linha}
 
-	variaveis.erase(variavel_loop)
-	return "\n".join(saidas)
+# Expressoes, da menor para a maior precedencia (como no Python).
 
-func _resolver_numero(valor: String) -> int:
-	if valor.is_valid_int():
-		return valor.to_int()
-	if valor in variaveis:
-		var v = variaveis[valor]
-		if typeof(v) == TYPE_INT: return v
-		if typeof(v) == TYPE_FLOAT: return int(v)
-	return -1
+func _parse_expr():
+	return _parse_ou()
 
-# ─── ATRIBUIÇÃO ─────────────────────────────────────────
+func _parse_ou():
+	var a = _parse_e()
+	while _erro == "" and _eh("NOME", "or"):
+		var l = _avancar().l
+		a = {"t": "ou", "a": a, "b": _parse_e(), "l": l}
+	return a
 
-func _eh_atribuicao(linha: String) -> bool:
-	if not "=" in linha:
-		return false
-	if "==" in linha:
-		return false
-	var partes = linha.split("=", false, 1)
-	if partes.size() < 2:
-		return false
-	var lado_esquerdo = partes[0].strip_edges()
-	var regex = RegEx.new()
-	regex.compile("^[a-zA-Z_][a-zA-Z0-9_]*$")
-	return regex.search(lado_esquerdo) != null
+func _parse_e():
+	var a = _parse_nao()
+	while _erro == "" and _eh("NOME", "and"):
+		var l = _avancar().l
+		a = {"t": "e", "a": a, "b": _parse_nao(), "l": l}
+	return a
 
-func _processar_atribuicao(linha: String) -> String:
-	var partes = linha.split("=", false, 1)
-	var nome = partes[0].strip_edges()
-	var valor_raw = partes[1].strip_edges()
+func _parse_nao():
+	if _eh("NOME", "not"):
+		var l = _avancar().l
+		return {"t": "nao", "a": _parse_nao(), "l": l}
+	return _parse_comparacao()
 
-	if (valor_raw.begins_with("'") and valor_raw.ends_with("'")) or \
-	   (valor_raw.begins_with('"') and valor_raw.ends_with('"')):
-		variaveis[nome] = valor_raw.substr(1, valor_raw.length() - 2)
-		return nome + " = '" + variaveis[nome] + "'"
+func _parse_comparacao():
+	var primeiro = _parse_soma()
+	var itens: Array = []
+	var linha = _ver().l
+	while _erro == "":
+		var op = ""
+		if _ver().t == "OP" and _ver().v in ["==", "!=", "<", ">", "<=", ">="]:
+			op = _avancar().v
+		elif _eh("NOME", "in"):
+			_avancar()
+			op = "in"
+		elif _eh("NOME", "not") and _eh("NOME", "in", 1):
+			_avancar()
+			_avancar()
+			op = "not in"
+		else:
+			break
+		itens.append({"op": op, "b": _parse_soma()})
+	if itens.is_empty():
+		return primeiro
+	return {"t": "cmp", "a": primeiro, "itens": itens, "l": linha}
 
-	if valor_raw.is_valid_int():
-		variaveis[nome] = valor_raw.to_int()
-		return nome + " = " + str(variaveis[nome])
+func _parse_soma():
+	var a = _parse_termo()
+	while _erro == "" and _ver().t == "OP" and _ver().v in ["+", "-"]:
+		var t = _avancar()
+		a = {"t": "bin", "op": t.v, "a": a, "b": _parse_termo(), "l": t.l}
+	return a
 
-	if valor_raw.is_valid_float():
-		variaveis[nome] = valor_raw.to_float()
-		return nome + " = " + str(variaveis[nome])
+func _parse_termo():
+	var a = _parse_unario()
+	while _erro == "" and _ver().t == "OP" and _ver().v in ["*", "/", "//", "%"]:
+		var t = _avancar()
+		a = {"t": "bin", "op": t.v, "a": a, "b": _parse_unario(), "l": t.l}
+	return a
 
-	if valor_raw in variaveis:
-		variaveis[nome] = variaveis[valor_raw]
-		return nome + " = " + str(variaveis[nome])
+func _parse_unario():
+	if _ver().t == "OP" and _ver().v in ["-", "+"]:
+		var t = _avancar()
+		var a = _parse_unario()
+		return a if t.v == "+" else {"t": "neg", "a": a, "l": t.l}
+	return _parse_posfixo()
 
-	if valor_raw == "True": variaveis[nome] = true; return nome + " = True"
-	if valor_raw == "False": variaveis[nome] = false; return nome + " = False"
+func _parse_posfixo():
+	var a = _parse_atomo()
+	while _erro == "":
+		if _eh("OP", "("):
+			if typeof(a) != TYPE_DICTIONARY or a.get("t") != "nome":
+				_definir_erro("So da para chamar funcoes pelo nome. Ex.: mover('direita')", _ver().l, "sintaxe")
+				return null
+			var l = _avancar().l
+			var args: Array = []
+			if not _eh("OP", ")"):
+				while _erro == "":
+					args.append(_parse_expr())
+					if _eh("OP", ","):
+						_avancar()
+						continue
+					break
+			if not _esperar_op(")", "Faltou fechar o parentese de " + a.nome + "(...)."):
+				return null
+			a = {"t": "chamada", "nome": a.nome, "args": args, "l": l}
+		elif _eh("OP", "["):
+			var l2 = _avancar().l
+			var indice = _parse_expr()
+			if not _esperar_op("]", "Faltou fechar o colchete ]."):
+				return null
+			a = {"t": "indice", "alvo": a, "i": indice, "l": l2}
+		else:
+			break
+	return a
 
-	return "Erro: valor inválido para '" + nome + "'"
+func _parse_atomo():
+	var t = _ver()
+	match t.t:
+		"NUM", "STR":
+			_avancar()
+			return {"t": "valor", "v": t.v, "l": t.l}
+		"NOME":
+			if t.v == "True" or t.v == "False" or t.v == "None":
+				_avancar()
+				var constante = null
+				if t.v == "True":
+					constante = true
+				elif t.v == "False":
+					constante = false
+				return {"t": "valor", "v": constante, "l": t.l}
+			if t.v in PALAVRAS_RESERVADAS:
+				_definir_erro("'" + t.v + "' esta fora de lugar nesta linha.", t.l, "sintaxe")
+				return null
+			_avancar()
+			return {"t": "nome", "nome": t.v, "l": t.l}
+		"OP":
+			if t.v == "(":
+				_avancar()
+				var dentro = _parse_expr()
+				_esperar_op(")", "Faltou fechar o parentese.")
+				return dentro
+			if t.v == "[":
+				_avancar()
+				var itens: Array = []
+				if not _eh("OP", "]"):
+					while _erro == "":
+						itens.append(_parse_expr())
+						if _eh("OP", ","):
+							_avancar()
+							if _eh("OP", "]"):
+								break
+							continue
+						break
+				_esperar_op("]", "Faltou fechar a lista com ].")
+				return {"t": "lista", "itens": itens, "l": t.l}
+	if t.t == "NL" or t.t == "FIM":
+		_definir_erro("A linha terminou antes da hora: falta um valor ou uma condicao.", t.l, "sintaxe")
+	else:
+		_definir_erro("Nao esperava '" + str(t.v) + "' aqui.", t.l, "sintaxe")
+	return null
 
-# ─── COMANDOS ───────────────────────────────────────────
+# ─── Execucao (corrotinas) ──────────────────────────────────────────
 
-func _executar_comando(linha: String) -> String:
-	# Detecta fireball ANTES de resolver variaveis para preservar o nome usado.
-	var regex_fireball = RegEx.new()
-	regex_fireball.compile("fireball\\((\\w+),\\s*['\"]?(\\w+)['\"]?\\)")
-	var resultado = regex_fireball.search(linha)
+func _exec_bloco(instrucoes: Array) -> void:
+	for s in instrucoes:
+		await _exec_stmt(s)
+		if _sinal != "":
+			return
 
-	if resultado:
-		var nome_var = resultado.get_string(1)
-		var direcao = resultado.get_string(2)
-		if player:
-			return player._fireball_com_variavel(nome_var, direcao)
+func _exec_stmt(s: Dictionary) -> void:
+	_passos += 1
+	if _passos > MAX_PASSOS:
+		_parar_laco_infinito()
+		return
+	if _cancelar:
+		_sinal = "parar"
+		_escrever("[grimorio] Execucao interrompida.")
+		return
+	emit_signal("linha_executando", s.l)
+	match s.t:
+		"pass":
+			return
+		"break", "continue":
+			if _profundidade_laco == 0:
+				_falhar("'" + s.t + "' so pode ser usado dentro de um for ou while.", s.l)
+				return
+			_sinal = s.t
+		"atrib":
+			var v = _avaliar(s.expr)
+			if _erro != "":
+				_falhar_atual()
+				return
+			variaveis[s.nome] = v
+			if not _multilinha:
+				_escrever(s.nome + " = " + _repr(v))
+		"atrib_op":
+			if not variaveis.has(s.nome):
+				_falhar("'" + s.nome + "' nao foi definida. Crie antes: " + s.nome + " = 0", s.l)
+				return
+			var delta = _avaliar(s.expr)
+			if _erro != "":
+				_falhar_atual()
+				return
+			var novo = _binario(s.op, variaveis[s.nome], delta, s.l)
+			if _erro != "":
+				_falhar_atual()
+				return
+			variaveis[s.nome] = novo
+			if not _multilinha:
+				_escrever(s.nome + " = " + _repr(novo))
+		"expr":
+			var e = s.expr
+			if typeof(e) == TYPE_DICTIONARY and e.get("t") == "chamada" and e.nome in COMANDOS:
+				await _exec_comando(e)
+				return
+			var valor = _avaliar(e)
+			if _erro != "":
+				_falhar_atual()
+				return
+			if not _multilinha and valor != null:
+				_escrever(_repr(valor))
+		"if":
+			await _exec_if(s)
+		"while":
+			await _exec_while(s)
+		"for":
+			await _exec_for(s)
 
-	# Para outros comandos, resolve variaveis normalmente
-	var linha_resolvida = _resolver_variaveis(linha)
-	return _executar_comando_resolvido(linha_resolvida)
+func _exec_if(s: Dictionary) -> void:
+	var cadeia = s.clausulas.size() > 1 or s.senao != null
+	var corpo = null
+	for c in s.clausulas:
+		var cond = _avaliar(c.cond)
+		if _erro != "":
+			_falhar_atual()
+			return
+		if _verdadeiro(cond):
+			corpo = c.corpo
+			break
+	if corpo == null and s.senao != null:
+		corpo = s.senao
+	if corpo == null:
+		if not _multilinha:
+			_escrever("Condição falsa — nenhuma ação executada.")
+		return
+	if cadeia:
+		_profundidade_cadeia += 1
+	await _exec_bloco(corpo)
+	if cadeia:
+		_profundidade_cadeia -= 1
 
-func _executar_comando_resolvido(linha: String) -> String:
+func _exec_while(s: Dictionary) -> void:
+	_profundidade_laco += 1
+	_profundidade_while += 1
+	while true:
+		var cond = _avaliar(s.cond)
+		if _erro != "":
+			_falhar_atual()
+			break
+		if not _verdadeiro(cond):
+			break
+		await _exec_bloco(s.corpo)
+		if _sinal == "break":
+			_sinal = ""
+			break
+		if _sinal == "continue":
+			_sinal = ""
+		if _sinal != "":
+			break
+		_passos += 1
+		if _passos > MAX_PASSOS:
+			_parar_laco_infinito()
+			break
+	_profundidade_laco -= 1
+	_profundidade_while -= 1
+
+func _exec_for(s: Dictionary) -> void:
+	var colecao = _avaliar(s.iter)
+	if _erro != "":
+		_falhar_atual()
+		return
+	var itens: Array = []
+	if typeof(colecao) == TYPE_ARRAY:
+		itens = colecao.duplicate()
+	elif typeof(colecao) == TYPE_STRING:
+		for i in range(colecao.length()):
+			itens.append(colecao[i])
+	else:
+		_falhar("O for percorre uma lista, um texto ou range(...). Ex.: for i in range(3):", s.l)
+		return
+	_profundidade_laco += 1
+	for item in itens:
+		variaveis[s.var] = item
+		await _exec_bloco(s.corpo)
+		if _sinal == "break":
+			_sinal = ""
+			break
+		if _sinal == "continue":
+			_sinal = ""
+		if _sinal != "":
+			break
+	_profundidade_laco -= 1
+
+func _exec_comando(e: Dictionary) -> void:
+	var nome: String = e.nome
+	var args: Array = e.args
+	match nome:
+		"print":
+			var partes: Array = []
+			for a in args:
+				var v = _avaliar(a)
+				if _erro != "":
+					_falhar_atual()
+					return
+				partes.append(_texto(v))
+			_escrever(" ".join(partes))
+		"mover", "atacar":
+			if args.size() != 1:
+				_falhar(nome + "() recebe uma direcao. Ex.: " + nome + "('direita')", e.l)
+				return
+			var arg = args[0]
+			if typeof(arg) == TYPE_DICTIONARY and arg.get("t") == "nome" and not variaveis.has(arg.nome):
+				_falhar("'" + arg.nome + "' nao e uma string nem uma variavel definida.\nDica: use aspas — " + nome + "('" + arg.nome + "')", e.l)
+				return
+			var direcao = _avaliar(arg)
+			if _erro != "":
+				_falhar_atual()
+				return
+			await _acao(nome, [_texto(direcao)], e.l)
+		"fireball":
+			if args.size() != 2 or typeof(args[0]) != TYPE_DICTIONARY or args[0].get("t") != "nome":
+				_falhar("fireball recebe o NOME de uma variavel e a direcao. Ex.: poder = 3 e depois fireball(poder, 'direita')", e.l)
+				return
+			var dir_no = args[1]
+			var direcao_fb = ""
+			if typeof(dir_no) == TYPE_DICTIONARY and dir_no.get("t") == "nome" and not variaveis.has(dir_no.nome):
+				direcao_fb = dir_no.nome
+			else:
+				direcao_fb = _texto(_avaliar(dir_no))
+				if _erro != "":
+					_falhar_atual()
+					return
+			await _acao("fireball", [args[0].nome, direcao_fb], e.l)
+		"escolher":
+			if args.size() != 1:
+				_falhar("Use escolher(1), escolher(2) ou escolher(3).", e.l)
+				return
+			var n = _avaliar(args[0])
+			if _erro != "":
+				_falhar_atual()
+				return
+			if typeof(n) != TYPE_INT:
+				_falhar("escolher() recebe um numero. Ex.: escolher(1)", e.l)
+				return
+			await _acao("escolher", [n], e.l)
+
+func _acao(nome: String, args: Array, linha: int) -> void:
+	var com_turno = nome in ACOES_COM_TURNO
+	if com_turno:
+		if _acoes >= MAX_ACOES:
+			_parar_laco_infinito()
+			return
+		if _acoes > 0 and atraso_entre_acoes > 0.0 and is_inside_tree():
+			await get_tree().create_timer(atraso_entre_acoes).timeout
+		if _cancelar:
+			_sinal = "parar"
+			_escrever("[grimorio] Execucao interrompida.")
+			return
+	emit_signal("linha_executando", linha)
+	ultimo_encadeado = _profundidade_cadeia > 0
+	var pendente_antes = player != null and not player.pending_escolha.is_empty()
+	var resposta = "Erro: player nao encontrado"
 	if player:
-		return player.executar_comando(linha)
-	return "Erro: player não encontrado"
+		resposta = player.executar_acao(nome, args)
+	if com_turno:
+		_acoes += 1
+	_saidas.append(resposta)
+	var continuar = true
+	if ao_agir.is_valid():
+		continuar = ao_agir.call(resposta, pendente_antes)
+	if com_turno and _profundidade_laco > 0:
+		_falhas_seguidas = _falhas_seguidas + 1 if _acao_falhou(resposta) else 0
+		if _falhas_seguidas >= MAX_FALHAS_SEGUIDAS:
+			_sinal = "parar"
+			_escrever("[grimorio] Laco interrompido: a mesma acao falhou " + str(MAX_FALHAS_SEGUIDAS) + " vezes seguidas (ex.: andar contra a parede). Use caminho_livre() ou inimigo_a_frente() na condicao do laco.")
+			return
+	if not continuar and _sinal == "":
+		_sinal = "parar"
 
-func _resolver_variaveis(linha: String) -> String:
-	# Substitui nomes de variaveis apenas FORA de strings literais.
-	# Sem isso, com fogo = 2 definido, a condicao sinal == 'fogo'
-	# virava '2' == '2' e todo ramo ficava verdadeiro.
-	var resultado = ""
-	var trecho = ""
-	var aspa = ""
-	for i in range(linha.length()):
-		var ch = linha[i]
-		if aspa == "":
-			if ch == "'" or ch == '"':
-				resultado += _substituir_variaveis(trecho)
-				trecho = ""
-				aspa = ch
-				resultado += ch
+func _acao_falhou(resposta: String) -> bool:
+	var r = resposta.to_lower()
+	for marcador in ["bloqueado", "ha uma parede", "nenhum inimigo", "mana insuficiente", "direcao invalida", "subiu de nivel"]:
+		if marcador in r:
+			return true
+	return false
+
+func _parar_laco_infinito():
+	if _sinal == "parar":
+		return
+	_sinal = "parar"
+	_escrever("[grimorio] Laco infinito? O programa passou do limite de " + str(MAX_ACOES) + " acoes e foi interrompido. Revise a condicao de parada. Se a sala travou, use reiniciar_sala().")
+
+# ─── Avaliacao de expressoes (sincrona) ─────────────────────────────
+
+func _avaliar(no):
+	if _erro != "" or typeof(no) != TYPE_DICTIONARY:
+		return null
+	match no.t:
+		"valor":
+			return no.v
+		"nome":
+			if variaveis.has(no.nome):
+				return variaveis[no.nome]
+			_definir_erro("'" + no.nome + "' nao foi definida. Crie antes: " + no.nome + " = valor", no.l, "execucao")
+			return null
+		"lista":
+			var lista: Array = []
+			for item in no.itens:
+				lista.append(_avaliar(item))
+			return lista
+		"neg":
+			var v = _avaliar(no.a)
+			if typeof(v) in [TYPE_INT, TYPE_FLOAT]:
+				return -v
+			_definir_erro("O sinal - so funciona com numeros.", no.l, "execucao")
+			return null
+		"ou":
+			var a = _avaliar(no.a)
+			return a if _verdadeiro(a) else _avaliar(no.b)
+		"e":
+			var a2 = _avaliar(no.a)
+			return _avaliar(no.b) if _verdadeiro(a2) else a2
+		"nao":
+			return not _verdadeiro(_avaliar(no.a))
+		"bin":
+			return _binario(no.op, _avaliar(no.a), _avaliar(no.b), no.l)
+		"cmp":
+			var esquerda = _avaliar(no.a)
+			for item in no.itens:
+				var direita = _avaliar(item.b)
+				if _erro != "":
+					return null
+				if not _comparar(item.op, esquerda, direita, no.l):
+					return false
+				esquerda = direita
+			return _erro == ""
+		"indice":
+			var alvo = _avaliar(no.alvo)
+			var i = _avaliar(no.i)
+			if _erro != "":
+				return null
+			if typeof(alvo) not in [TYPE_ARRAY, TYPE_STRING] or typeof(i) != TYPE_INT:
+				_definir_erro("Use [numero] em listas ou textos. Ex.: passos[0]", no.l, "execucao")
+				return null
+			var tamanho = alvo.size() if typeof(alvo) == TYPE_ARRAY else alvo.length()
+			var idx = i + tamanho if i < 0 else i
+			if idx < 0 or idx >= tamanho:
+				_definir_erro("Posicao " + str(i) + " fora da lista (ela tem " + str(tamanho) + " itens; a primeira posicao e 0).", no.l, "execucao")
+				return null
+			return alvo[idx]
+		"chamada":
+			return _chamar_funcao(no)
+	return null
+
+func _binario(op: String, a, b, linha: int):
+	if _erro != "":
+		return null
+	var numeros = typeof(a) in [TYPE_INT, TYPE_FLOAT] and typeof(b) in [TYPE_INT, TYPE_FLOAT]
+	match op:
+		"+":
+			if numeros:
+				return a + b
+			if typeof(a) == TYPE_STRING and typeof(b) == TYPE_STRING:
+				return a + b
+			if typeof(a) == TYPE_ARRAY and typeof(b) == TYPE_ARRAY:
+				return a + b
+			_definir_erro("Nao da para somar " + _tipo(a) + " com " + _tipo(b) + ". Para juntar texto e numero use str(numero).", linha, "execucao")
+			return null
+		"-":
+			if numeros:
+				return a - b
+		"*":
+			if numeros:
+				return a * b
+			if typeof(a) == TYPE_STRING and typeof(b) == TYPE_INT:
+				return a.repeat(max(b, 0))
+		"/":
+			if numeros:
+				if b == 0:
+					_definir_erro("Divisao por zero.", linha, "execucao")
+					return null
+				return float(a) / float(b)
+		"//":
+			if numeros:
+				if b == 0:
+					_definir_erro("Divisao por zero.", linha, "execucao")
+					return null
+				var q = floor(float(a) / float(b))
+				return int(q) if typeof(a) == TYPE_INT and typeof(b) == TYPE_INT else q
+		"%":
+			if numeros:
+				if b == 0:
+					_definir_erro("Divisao por zero.", linha, "execucao")
+					return null
+				if typeof(a) == TYPE_INT and typeof(b) == TYPE_INT:
+					return posmod(a, b)
+				return fposmod(a, b)
+	_definir_erro("A operacao " + op + " nao funciona com " + _tipo(a) + " e " + _tipo(b) + ".", linha, "execucao")
+	return null
+
+func _comparar(op: String, a, b, linha: int) -> bool:
+	match op:
+		"==":
+			return _iguais(a, b)
+		"!=":
+			return not _iguais(a, b)
+		"in", "not in":
+			var dentro = false
+			if typeof(b) == TYPE_ARRAY:
+				for item in b:
+					if _iguais(item, a):
+						dentro = true
+						break
+			elif typeof(b) == TYPE_STRING and typeof(a) == TYPE_STRING:
+				dentro = b.contains(a)
 			else:
-				trecho += ch
-		else:
-			resultado += ch
-			if ch == aspa:
-				aspa = ""
-	resultado += _substituir_variaveis(trecho)
-	return resultado
+				_definir_erro("'in' procura um item dentro de uma lista ou texto.", linha, "execucao")
+				return false
+			return dentro if op == "in" else not dentro
+	var numeros = typeof(a) in [TYPE_INT, TYPE_FLOAT] and typeof(b) in [TYPE_INT, TYPE_FLOAT]
+	var textos = typeof(a) == TYPE_STRING and typeof(b) == TYPE_STRING
+	if not (numeros or textos):
+		_definir_erro("Nao da para comparar " + _tipo(a) + " com " + _tipo(b) + " usando " + op + ".", linha, "execucao")
+		return false
+	match op:
+		"<":
+			return a < b
+		">":
+			return a > b
+		"<=":
+			return a <= b
+		">=":
+			return a >= b
+	return false
 
-func _substituir_variaveis(trecho: String) -> String:
-	# Passada unica por identificadores: cada nome e trocado no maximo uma vez,
-	# entao o valor inserido de uma variavel nunca e reprocessado por outra.
-	if trecho == "":
-		return trecho
-	var resultado = ""
-	var i = 0
-	while i < trecho.length():
-		var ch = trecho[i]
-		if _inicio_identificador(ch):
-			var j = i + 1
-			while j < trecho.length() and _parte_identificador(trecho[j]):
-				j += 1
-			var nome = trecho.substr(i, j - i)
-			if variaveis.has(nome):
-				resultado += _valor_como_texto(variaveis[nome])
-			else:
-				resultado += nome
-			i = j
-		elif ch >= "0" and ch <= "9":
-			# Numeros (ex.: 12, 3.5) nao sao identificadores
-			var k = i + 1
-			while k < trecho.length() and (_parte_identificador(trecho[k]) or trecho[k] == "."):
-				k += 1
-			resultado += trecho.substr(i, k - i)
-			i = k
-		else:
-			resultado += ch
-			i += 1
-	return resultado
+func _iguais(a, b) -> bool:
+	var na = typeof(a) in [TYPE_INT, TYPE_FLOAT]
+	var nb = typeof(b) in [TYPE_INT, TYPE_FLOAT]
+	if na and nb:
+		return float(a) == float(b)
+	if typeof(a) != typeof(b):
+		return false
+	return a == b
 
-func _inicio_identificador(ch: String) -> bool:
-	return (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_"
+func _chamar_funcao(no: Dictionary):
+	var nome: String = no.nome
+	if nome in COMANDOS:
+		_definir_erro(nome + "(...) e uma acao: escreva-a sozinha na linha, sem usar o resultado.", no.l, "execucao")
+		return null
+	match nome:
+		"atacar_com":
+			_definir_erro_cru("atacar_com foi substituido por fireball.\nUse: fireball(poder, 'direcao')", no.l)
+			return null
+		"abrir_bau", "abrir_porta", "abrir_comporta":
+			_definir_erro(nome + "() so funciona dentro do desafio: fique ao lado do objeto e digite desafio(...).", no.l, "execucao")
+			return null
+		"reiniciar", "reiniciar_sala":
+			_definir_erro("Digite " + nome + "() sozinho no terminal, fora de programas.", no.l, "execucao")
+			return null
+	var args: Array = []
+	for a in no.args:
+		args.append(_avaliar(a))
+	if _erro != "":
+		return null
+	match nome:
+		"range":
+			return _range(args, no.l)
+		"len":
+			if args.size() == 1 and typeof(args[0]) == TYPE_ARRAY:
+				return args[0].size()
+			if args.size() == 1 and typeof(args[0]) == TYPE_STRING:
+				return args[0].length()
+			_definir_erro("len() mede uma lista ou um texto. Ex.: len(passos)", no.l, "execucao")
+			return null
+		"str":
+			return _texto(args[0]) if args.size() == 1 else ""
+		"int":
+			if args.size() == 1:
+				if typeof(args[0]) in [TYPE_INT, TYPE_FLOAT, TYPE_BOOL]:
+					return int(args[0])
+				if typeof(args[0]) == TYPE_STRING and args[0].strip_edges().is_valid_int():
+					return args[0].strip_edges().to_int()
+			_definir_erro("int() precisa de um numero ou de um texto com numero.", no.l, "execucao")
+			return null
+		"abs":
+			if args.size() == 1 and typeof(args[0]) in [TYPE_INT, TYPE_FLOAT]:
+				return abs(args[0])
+		"min", "max":
+			var valores = args[0] if args.size() == 1 and typeof(args[0]) == TYPE_ARRAY else args
+			if valores.size() > 0:
+				var melhor = valores[0]
+				for v in valores:
+					if _erro == "" and _comparar("<" if nome == "min" else ">", v, melhor, no.l):
+						melhor = v
+				return melhor
+		"caminho_livre", "inimigo_a_frente":
+			var vetor = _direcao_do_sensor(nome, args, no.l)
+			if _erro != "" or player == null:
+				return false
+			var alvo: Vector2i = player.grid_pos + vetor
+			var gi = player.gerenciador_inimigos
+			var tem_inimigo = gi != null and gi.tem_inimigo(alvo)
+			if nome == "inimigo_a_frente":
+				return tem_inimigo
+			var mapa = player.mapa
+			return mapa != null and mapa.posicao_valida(alvo) and not tem_inimigo
+		"inimigos_restantes":
+			if player and player.gerenciador_inimigos:
+				return player.gerenciador_inimigos.quantidade_inimigos_vivos()
+			return 0
+		"minha_vida":
+			return player.hp if player else 0
+		"minha_mana":
+			return player.mana if player else 0
+		_:
+			_definir_erro_cru("Comando nao reconhecido. Tente: mover('direita'), atacar('direita') ou fireball(poder, 'direita')", no.l)
+			return null
+	_definir_erro(nome + "() recebeu valores que ele nao entende.", no.l, "execucao")
+	return null
 
-func _parte_identificador(ch: String) -> bool:
-	return _inicio_identificador(ch) or (ch >= "0" and ch <= "9")
+func _direcao_do_sensor(nome: String, args: Array, linha: int) -> Vector2i:
+	if args.size() != 1 or typeof(args[0]) != TYPE_STRING or not DIRECOES.has(args[0]):
+		_definir_erro("Direcao invalida em " + nome + "(). Use: direita, esquerda, cima ou baixo.", linha, "execucao")
+		return Vector2i.ZERO
+	return DIRECOES[args[0]]
 
-func _valor_como_texto(valor) -> String:
-	if typeof(valor) == TYPE_STRING:
-		return "'" + valor + "'"
-	if typeof(valor) == TYPE_BOOL:
-		return "True" if valor else "False"
-	return str(valor)
+func _range(args: Array, linha: int):
+	for a in args:
+		if typeof(a) != TYPE_INT:
+			_definir_erro("range() usa numeros inteiros. Ex.: range(3)", linha, "execucao")
+			return null
+	var inicio = 0
+	var fim = 0
+	var passo = 1
+	match args.size():
+		1:
+			fim = args[0]
+		2:
+			inicio = args[0]
+			fim = args[1]
+		3:
+			inicio = args[0]
+			fim = args[1]
+			passo = args[2]
+		_:
+			_definir_erro("range() recebe de 1 a 3 numeros. Ex.: range(3)", linha, "execucao")
+			return null
+	if passo == 0:
+		_definir_erro("O passo do range() nao pode ser 0.", linha, "execucao")
+		return null
+	var lista: Array = []
+	var i = inicio
+	while (passo > 0 and i < fim) or (passo < 0 and i > fim):
+		lista.append(i)
+		if lista.size() > MAX_RANGE:
+			_definir_erro("range() muito grande! Use no maximo " + str(MAX_RANGE) + " repeticoes.", linha, "execucao")
+			return null
+		i += passo
+	return lista
+
+# ─── Valores ────────────────────────────────────────────────────────
+
+func _verdadeiro(v) -> bool:
+	match typeof(v):
+		TYPE_NIL:
+			return false
+		TYPE_BOOL:
+			return v
+		TYPE_INT, TYPE_FLOAT:
+			return v != 0
+		TYPE_STRING:
+			return v != ""
+		TYPE_ARRAY:
+			return not v.is_empty()
+	return true
+
+func _texto(v) -> String:
+	if typeof(v) == TYPE_STRING:
+		return v
+	return _repr(v)
+
+func _repr(v) -> String:
+	match typeof(v):
+		TYPE_NIL:
+			return "None"
+		TYPE_BOOL:
+			return "True" if v else "False"
+		TYPE_STRING:
+			return "'" + v + "'"
+		TYPE_ARRAY:
+			var partes: Array = []
+			for item in v:
+				partes.append(_repr(item))
+			return "[" + ", ".join(partes) + "]"
+	return str(v)
+
+func _tipo(v) -> String:
+	match typeof(v):
+		TYPE_STRING:
+			return "texto"
+		TYPE_INT, TYPE_FLOAT:
+			return "numero"
+		TYPE_ARRAY:
+			return "lista"
+		TYPE_BOOL:
+			return "True/False"
+		TYPE_NIL:
+			return "None"
+	return "valor"
+
+# ─── Erros e saida ──────────────────────────────────────────────────
+
+func _definir_erro(mensagem: String, linha: int, tipo: String):
+	if _erro != "":
+		return
+	_erro = mensagem
+	_erro_linha = linha
+	_erro_tipo = tipo
+	_erro_cru = false
+
+func _definir_erro_cru(mensagem: String, linha: int):
+	if _erro != "":
+		return
+	_erro = mensagem
+	_erro_linha = linha
+	_erro_tipo = "execucao"
+	_erro_cru = true
+
+func _falhar(mensagem: String, linha: int):
+	_definir_erro(mensagem, linha, "execucao")
+	_falhar_atual()
+
+func _falhar_atual():
+	if _sinal == "erro":
+		return
+	_sinal = "erro"
+	_escrever(_mensagem_erro())
+
+func _mensagem_erro() -> String:
+	if _erro_cru:
+		return _erro
+	var prefixo = "Erro de sintaxe" if _erro_tipo == "sintaxe" else "Erro"
+	if _multilinha:
+		return prefixo + " na linha " + str(_erro_linha) + ": " + _erro
+	return prefixo + ": " + _erro
+
+func _escrever(texto: String):
+	_saidas.append(texto)
+	if ao_escrever.is_valid():
+		ao_escrever.call(texto)

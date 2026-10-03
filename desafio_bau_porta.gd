@@ -72,6 +72,7 @@ func configurar(cena: Node):
 	editor.gutters_draw_line_numbers = true
 	editor.indent_size = 4
 	editor.indent_use_spaces = true
+	editor.syntax_highlighter = jogo.criar_realce_python()
 	editor.text_changed.connect(func(): jogo.ia.cancelar())
 	editor.add_theme_font_size_override("font_size", 18)
 	coluna.add_child(editor)

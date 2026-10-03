@@ -20,6 +20,9 @@ const SALA_FLORESTA = 1
 const SALA_CAVERNA = 5
 const SALA_CAVERNA_CHEFE = 8
 const LIMITE_HISTORICO = 5
+const ATRASO_ENTRE_ACOES = 0.22
+const PALAVRAS_PYTHON = ["if", "elif", "else", "for", "while", "in", "not", "and", "or", "break", "continue", "pass", "True", "False", "None", "def", "return"]
+const FUNCOES_DO_JOGO = ["mover", "atacar", "fireball", "print", "range", "len", "str", "int", "abs", "min", "max", "escolher", "caminho_livre", "inimigo_a_frente", "inimigos_restantes", "minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta"]
 
 var historico: Array = []
 var historico_index: int = -1
@@ -28,6 +31,11 @@ var sala_atual: int = 0
 var fase_1_concluida: bool = false
 var fase_2_concluida: bool = false
 var trocando_sala: bool = false
+var executando_programa: bool = false
+var _sala_do_programa: int = -1
+var _programa_no_tutorial: bool = false
+var _programa_do_grimorio: bool = false
+var _linha_marcada: int = -1
 
 var xp_bar: ProgressBar
 var xp_texto: Label
@@ -43,6 +51,11 @@ var livro_texto: Label
 var desafios: Node
 var desafios_caverna: Node
 var ia: Node
+var grimorio_button: Button
+var grimorio_panel: PanelContainer
+var grimorio_editor: CodeEdit
+var grimorio_status: Label
+var grimorio_executar: Button
 
 func _ready():
 	ia = preload("res://feedback_ia.gd").new()
@@ -53,6 +66,10 @@ func _ready():
 	gerenciador_inimigos.player = player
 	interpretador.player = player
 	player.interpretador = interpretador
+	interpretador.atraso_entre_acoes = ATRASO_ENTRE_ACOES
+	interpretador.ao_agir = _ao_agir_programa
+	interpretador.ao_escrever = _ao_escrever_programa
+	interpretador.linha_executando.connect(_marcar_linha_grimorio)
 	
 	player.jogador_morreu.connect(_on_jogador_morreu)
 	player.hp_alterado.connect(_on_hp_alterado)
@@ -72,6 +89,7 @@ func _ready():
 	_construir_hud_recursos_ui()
 	_construir_levelup_ui()
 	_construir_livro_magias_ui()
+	_construir_grimorio_ui()
 	desafios = preload("res://desafio_bau_porta.gd").new()
 	add_child(desafios)
 	desafios.configurar(self)
@@ -221,6 +239,165 @@ func _construir_levelup_ui():
 	levelup_texto.add_theme_font_size_override("font_size", 15)
 	vbox.add_child(levelup_texto)
 
+func _construir_grimorio_ui():
+	grimorio_button = Button.new()
+	grimorio_button.name = "GrimorioButton"
+	grimorio_button.text = "{ }"
+	grimorio_button.custom_minimum_size = Vector2(48, 40)
+	grimorio_button.tooltip_text = "Grimorio: escreva codigo com varias linhas (Ctrl+G). Dica: terminar a linha com : tambem abre o grimorio."
+	grimorio_button.pressed.connect(_alternar_grimorio)
+	var linha_entrada = input_line.get_parent()
+	linha_entrada.add_child(grimorio_button)
+	linha_entrada.move_child(grimorio_button, recentes.get_index())
+	
+	grimorio_panel = PanelContainer.new()
+	grimorio_panel.name = "GrimorioPanel"
+	grimorio_panel.visible = false
+	grimorio_panel.z_index = 40
+	grimorio_panel.anchor_left = 0.0
+	# A camera centraliza o mago: o painel termina antes do centro da tela
+	# para o jogador sempre ver o proprio personagem executando o programa.
+	grimorio_panel.anchor_right = 0.5
+	grimorio_panel.anchor_top = 1.0
+	grimorio_panel.anchor_bottom = 1.0
+	grimorio_panel.offset_left = 12
+	grimorio_panel.offset_right = -40
+	grimorio_panel.offset_top = -476
+	grimorio_panel.offset_bottom = -166
+	grimorio_panel.add_theme_stylebox_override("panel", _estilo_livro(Color(0.07, 0.08, 0.13, 0.97), Color(0.56, 0.66, 1.0, 0.8), 8))
+	ui_root.add_child(grimorio_panel)
+	
+	var coluna = VBoxContainer.new()
+	coluna.add_theme_constant_override("separation", 6)
+	grimorio_panel.add_child(coluna)
+	
+	var topo = HBoxContainer.new()
+	coluna.add_child(topo)
+	var titulo = Label.new()
+	titulo.text = "Grimorio"
+	titulo.add_theme_color_override("font_color", Color(0.78, 0.84, 1.0))
+	titulo.add_theme_font_size_override("font_size", 18)
+	topo.add_child(titulo)
+	var dica = Label.new()
+	dica.text = "  Tab = recuo de 4 espacos  |  Ctrl+Enter executa  |  Esc fecha/para"
+	dica.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dica.clip_text = true
+	dica.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	dica.add_theme_color_override("font_color", Color(0.55, 0.62, 0.78))
+	dica.add_theme_font_size_override("font_size", 12)
+	topo.add_child(dica)
+	
+	grimorio_editor = CodeEdit.new()
+	grimorio_editor.custom_minimum_size = Vector2(0, 210)
+	grimorio_editor.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grimorio_editor.gutters_draw_line_numbers = true
+	grimorio_editor.gutters_draw_executing_lines = true
+	grimorio_editor.indent_size = 4
+	grimorio_editor.indent_use_spaces = true
+	grimorio_editor.indent_automatic = true
+	grimorio_editor.auto_brace_completion_enabled = true
+	grimorio_editor.syntax_highlighter = criar_realce_python()
+	grimorio_editor.add_theme_font_size_override("font_size", 16)
+	grimorio_editor.placeholder_text = "while caminho_livre('direita'):\n    mover('direita')"
+	grimorio_editor.gui_input.connect(_on_grimorio_input)
+	grimorio_editor.text_changed.connect(func(): ia.cancelar())
+	coluna.add_child(grimorio_editor)
+	
+	var acoes = HBoxContainer.new()
+	coluna.add_child(acoes)
+	grimorio_executar = Button.new()
+	grimorio_executar.text = "Executar"
+	grimorio_executar.tooltip_text = "Executar o programa (Ctrl+Enter)"
+	grimorio_executar.pressed.connect(_executar_grimorio)
+	acoes.add_child(grimorio_executar)
+	var fechar = Button.new()
+	fechar.text = "Fechar"
+	fechar.tooltip_text = "Fechar o grimorio ou parar o programa (Esc)"
+	fechar.pressed.connect(_fechar_grimorio)
+	acoes.add_child(fechar)
+	grimorio_status = Label.new()
+	grimorio_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grimorio_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	grimorio_status.clip_text = true
+	grimorio_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	grimorio_status.add_theme_color_override("font_color", Color(0.72, 0.8, 0.95))
+	grimorio_status.add_theme_font_size_override("font_size", 13)
+	acoes.add_child(grimorio_status)
+
+func criar_realce_python() -> CodeHighlighter:
+	var realce = CodeHighlighter.new()
+	realce.number_color = Color(0.93, 0.72, 0.38)
+	realce.symbol_color = Color(0.65, 0.72, 0.8)
+	realce.function_color = Color(0.5, 0.82, 1.0)
+	realce.member_variable_color = Color(0.9, 0.93, 0.96)
+	for palavra in PALAVRAS_PYTHON:
+		realce.add_keyword_color(palavra, Color(1.0, 0.48, 0.72))
+	for funcao in FUNCOES_DO_JOGO:
+		realce.add_keyword_color(funcao, Color(0.5, 0.82, 1.0))
+	realce.add_color_region("'", "'", Color(0.65, 0.88, 0.46), true)
+	realce.add_color_region("\"", "\"", Color(0.65, 0.88, 0.46), true)
+	realce.add_color_region("#", "", Color(0.45, 0.52, 0.6), true)
+	return realce
+
+func _alternar_grimorio():
+	if grimorio_panel.visible:
+		_fechar_grimorio()
+	else:
+		_abrir_grimorio()
+
+func _abrir_grimorio(texto_inicial: String = ""):
+	if texto_inicial != "":
+		grimorio_editor.text = texto_inicial
+		grimorio_editor.set_caret_line(grimorio_editor.get_line_count() - 1)
+		grimorio_editor.set_caret_column(grimorio_editor.get_line(grimorio_editor.get_line_count() - 1).length())
+	grimorio_panel.visible = true
+	grimorio_status.text = ""
+	grimorio_editor.grab_focus()
+
+func _fechar_grimorio():
+	if executando_programa:
+		interpretador.cancelar_execucao()
+		return
+	grimorio_panel.visible = false
+	input_line.grab_focus()
+
+func _on_grimorio_input(evento):
+	if not (evento is InputEventKey and evento.pressed):
+		return
+	if evento.keycode in [KEY_ENTER, KEY_KP_ENTER] and evento.ctrl_pressed:
+		grimorio_editor.accept_event()
+		if not evento.echo:
+			_executar_grimorio()
+	elif evento.keycode == KEY_ESCAPE:
+		grimorio_editor.accept_event()
+		_fechar_grimorio()
+
+func _executar_grimorio():
+	if executando_programa:
+		return
+	if grimorio_editor.text.strip_edges() == "":
+		grimorio_status.text = "Escreva um programa primeiro."
+		return
+	_programa_do_grimorio = true
+	await _executar_programa(grimorio_editor.text)
+	_programa_do_grimorio = false
+	if grimorio_panel.visible:
+		grimorio_editor.grab_focus()
+
+func _marcar_linha_grimorio(linha: int):
+	if not _programa_do_grimorio or grimorio_editor == null:
+		return
+	if _linha_marcada >= 0 and _linha_marcada < grimorio_editor.get_line_count():
+		grimorio_editor.set_line_as_executing(_linha_marcada, false)
+	_linha_marcada = linha - 1
+	if _linha_marcada >= 0 and _linha_marcada < grimorio_editor.get_line_count():
+		grimorio_editor.set_line_as_executing(_linha_marcada, true)
+
+func _limpar_linha_grimorio():
+	if _linha_marcada >= 0 and grimorio_editor and _linha_marcada < grimorio_editor.get_line_count():
+		grimorio_editor.set_line_as_executing(_linha_marcada, false)
+	_linha_marcada = -1
+
 func _construir_livro_magias_ui():
 	livro_button = Button.new()
 	livro_button.name = "LivroButton"
@@ -347,7 +524,7 @@ func _texto_livro_magias() -> String:
 		linhas.append("  if cond: acao   roda a acao so se cond for verdadeira.")
 		linhas.append("  elif cond: acao   testa outra condicao quando a anterior e falsa.")
 		linhas.append("  else: acao   roda quando nenhuma condicao anterior foi verdadeira.")
-		linhas.append("  Em uma linha: if a: x elif b: y else: z")
+		linhas.append("  Varias linhas: abra o grimorio { } ou termine a linha com : e aperte Enter.")
 		linhas.append("  and / or combinam condicoes: if hp < 5 and mana > 2: ...")
 		linhas.append("  fogo = 3  e depois  fireball(fogo, 'direita')  usa o elemento fogo.")
 		if sala_atual == SALA_CAVERNA:
@@ -356,10 +533,18 @@ func _texto_livro_magias() -> String:
 			linhas.append("  sinal_oraculo guarda o elemento que o Oraculo aceita agora.")
 		linhas.append("")
 	
+	if not tutorial.esta_ativo():
+		linhas.append("Grimorio { }  (Ctrl+G)")
+		linhas.append("  Editor de varias linhas: if, for e while com blocos recuados.")
+		linhas.append("  Cada acao (mover, atacar, fireball) e um turno: os inimigos agem entre elas.")
+		linhas.append("  Esc interrompe um programa em execucao.")
+		linhas.append("")
 	linhas.append("")
 	linhas.append("Sistema")
 	linhas.append("  reiniciar()")
 	linhas.append("  Recomeca a run desde o tutorial.")
+	linhas.append("  reiniciar_sala()")
+	linhas.append("  Recomeca so a sala atual (vida, mana e XP ficam).")
 	linhas.append("")
 	linhas.append("Novos comandos aparecem aqui quando forem ensinados.")
 	return "\n".join(linhas)
@@ -674,7 +859,7 @@ func _anunciar_chefe_caverna():
 	_adicionar_saida("Ele esta preso ao cristal e nao se move, mas fere quem chega perto.")
 	_adicionar_saida("A cada ataque o sinal dele muda. O sinal atual fica guardado em sinal_oraculo.")
 	_adicionar_saida("Tenha fogo, gelo e arcano definidos (ex.: fogo = 3) e use fireball com o elemento do sinal.")
-	_adicionar_saida("Na ultima fase o sinal fica oculto: so uma linha if / elif / else o derrota.")
+	_adicionar_saida("Na ultima fase o sinal fica oculto: so uma cadeia if / elif / else, escrita no grimorio { }, o derrota.")
 	_adicionar_saida("------------------------------")
 
 func _concluir_fase_2():
@@ -687,7 +872,16 @@ func _concluir_fase_2():
 	_adicionar_saida("Fim da versao jogavel desta etapa.")
 	_adicionar_saida("------------------------------")
 
+func _input(event):
+	if event is InputEventKey and event.pressed and not event.echo and event.ctrl_pressed and event.keycode == KEY_G:
+		_alternar_grimorio()
+		get_viewport().set_input_as_handled()
+
 func _on_terminal_input(event):
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and executando_programa:
+		interpretador.cancelar_execucao()
+		input_line.accept_event()
+		return
 	if event is InputEventKey and event.pressed:
 		if event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
 			input_line.accept_event()
@@ -755,12 +949,20 @@ func _on_comando_enviado(texto: String):
 	texto = texto.strip_edges()
 	if texto == "":
 		return
+	if executando_programa:
+		_adicionar_saida("[grimorio] Aguarde o programa terminar (Esc para parar).")
+		return
 	ia.cancelar()
 	
 	if texto == "reiniciar()":
 		_reiniciar_run()
 		return
 	_registrar_comando(texto)
+	if texto == "reiniciar_sala()":
+		_adicionar_saida(">>> " + texto)
+		_preparar_proximo_comando()
+		await _reiniciar_sala_atual()
+		return
 	if texto.begins_with("desafio"):
 		_adicionar_saida(">>> " + texto)
 		var gerenciador_desafio = desafios_caverna if sala_atual == SALA_CAVERNA else desafios
@@ -769,34 +971,101 @@ func _on_comando_enviado(texto: String):
 		if not gerenciador_desafio.painel.visible:
 			input_line.grab_focus()
 		return
-	
-	if tutorial.esta_ativo():
-		_adicionar_saida(">>> " + texto)
-		var resposta = interpretador.executar(texto)
-		if resposta != "":
-			_adicionar_saida(resposta)
-		
-		tutorial.verificar_comando(texto, resposta)
-		_pedir_feedback_erro(texto, resposta)
-		_atualizar_livro_magias()
-		if _deve_contar_rodada(resposta):
-			_recuperar_mana_fim_rodada()
-		
-		_adicionar_saida("------------------------------")
-		_preparar_proximo_comando()
+	if texto.ends_with(":"):
+		# if/for/while terminados em : continuam no grimorio, com a linha de baixo ja recuada.
+		input_line.clear()
+		_abrir_grimorio(texto + "\n    ")
+		grimorio_status.text = "Continue o bloco aqui e use Ctrl+Enter para executar."
 		return
 	
-	_adicionar_saida(">>> " + texto)
-	var escolha_pendente_antes = not player.pending_escolha.is_empty()
-	var resposta = interpretador.executar(texto)
-	if resposta != "":
-		_adicionar_saida(resposta)
-	_atualizar_levelup_visibilidade()
-	_processar_turno_pos_jogador(resposta, escolha_pendente_antes)
-	_sincronizar_sinal_oraculo()
-	_pedir_feedback_erro(texto, resposta)
-	_adicionar_saida("------------------------------")
+	await _executar_programa(texto)
 	_preparar_proximo_comando()
+
+# Executa um programa (uma linha do terminal ou o texto do grimorio).
+# Cada acao chama _ao_agir_programa, que processa o turno dos inimigos.
+func _executar_programa(codigo: String) -> String:
+	executando_programa = true
+	_sala_do_programa = sala_atual
+	_programa_no_tutorial = tutorial.esta_ativo()
+	_eco_programa(codigo)
+	if _programa_do_grimorio:
+		grimorio_executar.disabled = true
+		grimorio_status.text = "Executando... (Esc para parar)"
+	var resposta = await interpretador.executar(codigo)
+	_limpar_linha_grimorio()
+	executando_programa = false
+	if grimorio_executar:
+		grimorio_executar.disabled = false
+	if _programa_do_grimorio and grimorio_status:
+		grimorio_status.text = "Programa concluido."
+	if _programa_no_tutorial:
+		tutorial.verificar_comando(codigo, resposta)
+		_atualizar_livro_magias()
+	else:
+		_fim_de_programa()
+	_pedir_feedback_erro(codigo, resposta)
+	return resposta
+
+func _eco_programa(codigo: String):
+	var linhas = codigo.strip_edges(false, true).split("\n")
+	var primeira = true
+	for linha in linhas:
+		if primeira and linha.strip_edges() == "":
+			continue
+		_adicionar_saida((">>> " if primeira else "... ") + linha)
+		primeira = false
+
+func _ao_escrever_programa(texto: String):
+	_adicionar_saida(texto)
+
+func _ao_agir_programa(resposta: String, pendente_antes: bool) -> bool:
+	_adicionar_saida(resposta)
+	if _programa_no_tutorial:
+		if _deve_contar_rodada(resposta):
+			_recuperar_mana_fim_rodada()
+		_atualizar_livro_magias()
+	else:
+		_atualizar_levelup_visibilidade()
+		_processar_turno_pos_jogador(resposta, pendente_antes)
+		_sincronizar_sinal_oraculo()
+		_apos_acao_no_mapa()
+	if not player.vivo:
+		return false
+	if trocando_sala or sala_atual != _sala_do_programa:
+		return false
+	if not player.pending_escolha.is_empty():
+		if not pendente_antes and (interpretador.dentro_de_laco() or interpretador._multilinha):
+			_adicionar_saida("[grimorio] Programa pausado: voce subiu de nivel. Escolha a runa com escolher(n) e execute de novo.")
+		return false
+	return true
+
+# Ganchos para mecanicas que reagem ao fim de um programa ou a cada acao
+# (ex.: inimigos que se regeneram quando o laco termina).
+func _fim_de_programa():
+	if gerenciador_inimigos.has_method("fim_de_programa"):
+		var aviso = gerenciador_inimigos.fim_de_programa()
+		if aviso != "":
+			_adicionar_saida(aviso)
+
+func _apos_acao_no_mapa():
+	pass
+
+func _reiniciar_sala_atual():
+	if tutorial.esta_ativo() or sala_atual == SALA_TUTORIAL:
+		_adicionar_saida("reiniciar_sala() fica disponivel depois do tutorial.")
+		return
+	if trocando_sala or not player.vivo:
+		_adicionar_saida("Agora nao da para reiniciar a sala.")
+		return
+	var hp_antes = player.hp
+	var mana_antes = player.mana
+	await _iniciar_sala(sala_atual)
+	# Reiniciar nao pode virar cura gratis: vida, mana e XP ficam como estavam.
+	player.hp = hp_antes
+	player.mana = mana_antes
+	player.emit_signal("hp_alterado", player.hp, player.hp_max)
+	player.emit_signal("mana_alterada", player.mana, player.mana_max)
+	_adicionar_saida("[sala] Sala reiniciada: inimigos, objetos e posicao voltaram ao inicio. Vida, mana e XP foram mantidos.")
 
 func _pedir_feedback_erro(codigo: String, resposta: String):
 	if not player.vivo or not ia.eh_erro(resposta):
@@ -925,6 +1194,7 @@ func _on_mana_alterada(mana_atual: int, mana_maximo: int):
 		mana_texto.text = str(mana_atual) + "/" + str(mana_maximo)
 
 func _reiniciar_run():
+	interpretador.cancelar_execucao()
 	historico.clear()
 	historico_index = 0
 	rascunho_terminal = ""

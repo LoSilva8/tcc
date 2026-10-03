@@ -101,6 +101,24 @@ func executar_comando(comando: String) -> String:
 	
 	return "Comando nao reconhecido. Tente: mover('direita'), atacar('direita') ou fireball(poder, 'direita')"
 
+# Ponto de entrada do interpretador: recebe a acao ja com os argumentos avaliados.
+# Mantem as mesmas travas de executar_comando (derrotado / runa pendente).
+func executar_acao(nome: String, args: Array) -> String:
+	if not vivo:
+		return "Voce esta derrotado. Digite reiniciar() para tentar novamente."
+	if nome == "escolher":
+		return escolher_upgrade(int(args[0]))
+	if not pending_escolha.is_empty():
+		return "Voce subiu de nivel! Escolha uma runa antes de continuar.\nUse: escolher(1), escolher(2) ou escolher(3)"
+	match nome:
+		"mover":
+			return _mover(str(args[0]))
+		"atacar":
+			return _atacar(str(args[0]))
+		"fireball":
+			return _fireball_com_variavel(str(args[0]), str(args[1]))
+	return "Comando nao reconhecido. Tente: mover('direita'), atacar('direita') ou fireball(poder, 'direita')"
+
 func _mover(direcao: String) -> String:
 	var nova_pos = grid_pos
 	

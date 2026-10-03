@@ -64,7 +64,7 @@ func receber_dano(dano: int, nome_variavel: String, encadeado: bool = false) -> 
 		return "'" + nome_variavel + "' nao e o elemento certo agora." + pista + "\nO sinal mudou."
 
 	if exige_encadeado and not encadeado:
-		return "O Nucleo Arcano ignora respostas isoladas.\nResponda com uma unica linha if / elif / else que teste sinal_oraculo e cubra todos os sinais possiveis."
+		return "O Nucleo Arcano ignora respostas isoladas.\nEscreva no grimorio { } uma cadeia if / elif / else que teste sinal_oraculo e cubra todos os sinais possiveis."
 
 	hp_fases[fase] -= dano
 	hp_fases[fase] = max(hp_fases[fase], 0)

@@ -15,13 +15,14 @@ func _testar():
 	jogo = load("res://main.tscn").instantiate()
 	root.add_child(jogo)
 	jogo.ia.habilitado = false
+	jogo.interpretador.atraso_entre_acoes = 0.0
 	await process_frame
 	await process_frame
 	await _testar_pular_tutorial()
-	_testar_interpretador()
+	await _testar_interpretador()
 	await _testar_transicao_floresta_caverna()
-	_testar_comporta()
-	_testar_ecos()
+	await _testar_comporta()
+	await _testar_ecos()
 	_testar_rodadas_na_caverna()
 	await _testar_progressao_das_galerias()
 	await _testar_oraculo()
@@ -49,26 +50,18 @@ func _testar_interpretador():
 	var it = load("res://interpretador.gd").new()
 	it.variaveis["fogo"] = 2
 	it.variaveis["gelo"] = 2
-	var linha = "if sinal == 'fogo': A elif sinal == 'gelo': B else: C"
+	var cadeia = "if sinal == 'fogo':\n    print('A')\nelif sinal == 'gelo':\n    print('B')\nelse:\n    print('C')"
 	for caso in [["fogo", "A"], ["gelo", "B"], ["arcano", "C"]]:
 		it.variaveis["sinal"] = caso[0]
-		var ramo = it.escolher_ramo_condicional(linha)
-		verificar(typeof(ramo) == TYPE_STRING and ramo == caso[1], "Cadeia deve escolher " + caso[1] + " quando sinal = " + caso[0])
-	verificar(it.ultimo_encadeado, "Linha com elif/else deve marcar ultimo_encadeado.")
-	it.variaveis["sinal"] = "gelo"
-	var sem_ramo = it.escolher_ramo_condicional("if sinal == 'fogo': A")
-	verificar(typeof(sem_ramo) == TYPE_STRING and sem_ramo == "", "if falso sem else nao deve escolher ramo.")
-	verificar(not it.ultimo_encadeado, "if isolado nao conta como cadeia.")
-	verificar(it._resolver_variaveis("sinal == 'fogo'") == "'gelo' == 'fogo'", "Nomes de variaveis dentro de strings nao podem ser substituidos.")
+		verificar(await it.executar(cadeia) == caso[1], "Cadeia deve escolher " + caso[1] + " quando sinal = " + caso[0])
+	verificar("linha nova" in await it.executar("if sinal == 'fogo': print('A') elif sinal == 'gelo': print('B')"), "elif na mesma linha agora e recusado (nao e Python valido).")
 	it.variaveis["hp"] = 3
 	it.variaveis["mana"] = 4
 	verificar(it._avaliar_condicao("hp < 5 and mana > 2"), "and deve exigir as duas condicoes.")
 	verificar(not it._avaliar_condicao("hp > 5 or mana > 10"), "or falso nos dois lados deve ser falso.")
-	verificar(it._avaliar_condicao("hp > 5 or mana > 2"), "or deve aceitar um lado verdadeiro.")
-	verificar(it.escolher_ramo_condicional("if hp < 5 mover('cima')") == null, "if sem dois-pontos deve ser erro de sintaxe.")
-	var resposta = it.executar("if hp > 5: poder = 3")
-	verificar("falsa" in resposta and "nenhuma" in resposta.to_lower(), "Mensagem de condicao falsa deve continuar reconhecivel pelo main.gd.")
-	it.executar("if hp < 5: poder = 3")
+	var resposta = await it.executar("if hp > 5: poder = 3")
+	verificar("falsa" in resposta and "nenhuma" in resposta.to_lower(), "Mensagem de condicao falsa continua reconhecivel.")
+	await it.executar("if hp < 5: poder = 3")
 	verificar(it.variaveis.get("poder") == 3, "Ramo pode conter uma atribuicao.")
 	it.free()
 
@@ -96,7 +89,7 @@ func _testar_comporta():
 	desafio.comando("desafio(comporta)")
 	verificar(not desafio.painel.visible, "Comporta nao deve abrir desafio a distancia.")
 	jogo.player.grid_pos = Vector2i(6, 4)
-	verificar("desafio(comporta)" in jogo.interpretador.executar("mover('direita')"), "Esbarrar na comporta deve ensinar o comando.")
+	verificar("desafio(comporta)" in await jogo.interpretador.executar("mover('direita')"), "Esbarrar na comporta deve ensinar o comando.")
 	desafio._process(0)
 	verificar(desafio.dica_proximidade.text.contains("desafio(comporta)"), "Dica deve aparecer ao lado da comporta.")
 	var hp_antes = jogo.player.hp
@@ -143,10 +136,10 @@ func _testar_ecos():
 	var resposta = jogo.player.executar_comando("atacar('direita')")
 	verificar("atravessam" in resposta and eco_fogo.hp == 3, "Ataque comum nao deve ferir um Eco.")
 	jogo.player.mana = jogo.player.mana_max
-	resposta = jogo.interpretador.executar("fireball(gelo, 'direita')")
+	resposta = jogo.player.executar_acao("fireball", ["gelo", "direita"])
 	verificar("nao afeta" in resposta and eco_fogo.hp == 3, "Elemento errado nao deve ferir o Eco.")
 	jogo.player.mana = jogo.player.mana_max
-	resposta = jogo.interpretador.executar("fireball(fogo, 'direita')")
+	resposta = jogo.player.executar_acao("fireball", ["fogo", "direita"])
 	verificar("dissipado" in resposta and not eco_fogo.vivo, "Elemento certo deve dissipar o Eco.")
 	verificar(not gi.tem_inimigo(Vector2i(3, 2)), "Eco derrotado deve sair do mapa.")
 	verificar(jogo.player.nivel == 2 and jogo.player.xp == 2, "Eco deve dar 7 XP (sobe para o Nv 2 com 2/8).")
@@ -220,12 +213,12 @@ func _testar_oraculo():
 	if not jogo.player.pending_escolha.is_empty():
 		jogo.player.escolher_upgrade(1)
 	jogo.player.mana = jogo.player.mana_max
-	var resposta = jogo.interpretador.executar("fireball(" + oraculo.sinal_atual + ", 'direita')")
+	var resposta = await jogo.interpretador.executar("fireball(" + oraculo.sinal_atual + ", 'direita')")
 	verificar("ignora respostas isoladas" in resposta and oraculo.hp_fases["nucleo_arcano"] == hp_nucleo, "Nucleo deve exigir uma cadeia if/elif/else.")
 	verificar(oraculo.sinal_label.text == "???", "Nucleo deve esconder o sinal.")
 	verificar(oraculo.visual.cor == oraculo.COR_OCULTA, "Cor do Nucleo nao pode revelar o sinal.")
 
-	var cadeia = "if sinal_oraculo == 'fogo': fireball(fogo, 'direita') elif sinal_oraculo == 'gelo': fireball(gelo, 'direita') else: fireball(arcano, 'direita')"
+	var cadeia = "if sinal_oraculo == 'fogo':\n    fireball(fogo, 'direita')\nelif sinal_oraculo == 'gelo':\n    fireball(gelo, 'direita')\nelse:\n    fireball(arcano, 'direita')"
 	tentativas = 0
 	while oraculo.vivo and tentativas < 8:
 		tentativas += 1
