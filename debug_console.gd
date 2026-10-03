@@ -65,8 +65,8 @@ func _executar(comando: String) -> String:
 	match cmd:
 		"ajuda":
 			return "Comandos:\n" + \
-				"  sala <n>          - vai direto para a sala n (0-4)\n" + \
-				"  spawn <tipo> <x> <y> - spawna inimigo (normal/escudo/chefe)\n" + \
+				"  sala <n>          - vai direto para a sala n (0-8; 5-8 = cavernas)\n" + \
+				"  spawn <tipo> <x> <y> - spawna inimigo (normal/escudo/chefe/elemental/oraculo)\n" + \
 				"  tutorial_skip      - pula o tutorial\n" + \
 				"  hp <n>             - define HP do jogador\n" + \
 				"  matar_tudo         - remove todos os inimigos da sala\n" + \
@@ -98,8 +98,15 @@ func _executar(comando: String) -> String:
 				"chefe":
 					main_ref.gerenciador_inimigos.spawnar_chefe(pos)
 					return "Chefe spawnado em " + str(pos)
+				"elemental":
+					main_ref.gerenciador_inimigos.spawnar_inimigo_elemental(pos)
+					return "Eco elemental spawnado em " + str(pos)
+				"oraculo":
+					main_ref.gerenciador_inimigos.spawnar_chefe_caverna(pos)
+					main_ref._sincronizar_sinal_oraculo()
+					return "Oraculo Bifurcado spawnado em " + str(pos)
 				_:
-					return "Tipo invalido. Use: normal, escudo ou chefe"
+					return "Tipo invalido. Use: normal, escudo, chefe, elemental ou oraculo"
 		
 		"tutorial_skip":
 			main_ref.tutorial.ativo = false

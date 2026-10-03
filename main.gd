@@ -17,6 +17,8 @@ extends Node2D
 
 const SALA_TUTORIAL = 0
 const SALA_FLORESTA = 1
+const SALA_CAVERNA = 5
+const SALA_CAVERNA_CHEFE = 8
 const LIMITE_HISTORICO = 5
 
 var historico: Array = []
@@ -24,6 +26,8 @@ var historico_index: int = -1
 var rascunho_terminal = ""
 var sala_atual: int = 0
 var fase_1_concluida: bool = false
+var fase_2_concluida: bool = false
+var trocando_sala: bool = false
 
 var xp_bar: ProgressBar
 var xp_texto: Label
@@ -37,6 +41,7 @@ var livro_button: Button
 var livro_panel: PanelContainer
 var livro_texto: Label
 var desafios: Node
+var desafios_caverna: Node
 var ia: Node
 
 func _ready():
@@ -70,6 +75,9 @@ func _ready():
 	desafios = preload("res://desafio_bau_porta.gd").new()
 	add_child(desafios)
 	desafios.configurar(self)
+	desafios_caverna = preload("res://desafio_comporta.gd").new()
+	add_child(desafios_caverna)
+	desafios_caverna.configurar(self)
 	get_viewport().size_changed.connect(_reposicionar_hud_recursos)
 	
 	_iniciar_sala(0)
@@ -334,6 +342,20 @@ func _texto_livro_magias() -> String:
 		linhas.append("  O Guardiao da Saida so recebe dano se voce estiver na arena marcada.")
 		linhas.append("")
 	
+	if _em_caverna():
+		linhas.append("Fase 2")
+		linhas.append("  if cond: acao   roda a acao so se cond for verdadeira.")
+		linhas.append("  elif cond: acao   testa outra condicao quando a anterior e falsa.")
+		linhas.append("  else: acao   roda quando nenhuma condicao anterior foi verdadeira.")
+		linhas.append("  Em uma linha: if a: x elif b: y else: z")
+		linhas.append("  and / or combinam condicoes: if hp < 5 and mana > 2: ...")
+		linhas.append("  fogo = 3  e depois  fireball(fogo, 'direita')  usa o elemento fogo.")
+		if sala_atual == SALA_CAVERNA:
+			linhas.append("  Ao lado da comporta, digite desafio(comporta).")
+		if sala_atual == SALA_CAVERNA_CHEFE:
+			linhas.append("  sinal_oraculo guarda o elemento que o Oraculo aceita agora.")
+		linhas.append("")
+	
 	linhas.append("")
 	linhas.append("Sistema")
 	linhas.append("  reiniciar()")
@@ -439,15 +461,25 @@ func _atualizar_levelup_visibilidade():
 
 func _iniciar_sala(indice: int):
 	ia.cancelar()
+	trocando_sala = false
 	sala_atual = indice
 	mapa.carregar_sala(indice)
 	if desafios:
 		desafios.reiniciar()
+	if desafios_caverna:
+		desafios_caverna.reiniciar()
 	player.grid_pos = Vector2i(1, 1)
 	player._sincronizar_posicao()
 	
 	if indice == SALA_FLORESTA:
 		fase_1_concluida = false
+		player.curar_total()
+	
+	if indice == SALA_CAVERNA:
+		fase_2_concluida = false
+		player.curar_total()
+	
+	if indice == SALA_CAVERNA_CHEFE:
 		player.curar_total()
 	
 	for filho in gerenciador_inimigos.get_children():
@@ -462,6 +494,17 @@ func _iniciar_sala(indice: int):
 		_adicionar_saida("Cada parte exige uma variavel com nome especifico (veja acima dele).")
 		_adicionar_saida("Use: nome = valor  e depois  fireball(nome, 'direcao')")
 		_adicionar_saida("------------------------------")
+	
+	if indice == SALA_CAVERNA:
+		_anunciar_fase_2()
+	elif indice > SALA_CAVERNA and indice < SALA_CAVERNA_CHEFE:
+		_adicionar_saida("[fase 2] Galeria " + str(indice - SALA_CAVERNA) + " das Cavernas")
+		_adicionar_saida("Mais Ecos elementais. Derrote todos para liberar a saida.")
+		_adicionar_saida("------------------------------")
+	elif indice == SALA_CAVERNA_CHEFE:
+		_anunciar_chefe_caverna()
+	
+	_sincronizar_sinal_oraculo()
 
 func _spawnar_inimigos_sala():
 	if sala_atual == SALA_TUTORIAL:
@@ -480,6 +523,28 @@ func _spawnar_inimigos_sala():
 	
 	if sala_atual == 4:
 		gerenciador_inimigos.spawnar_chefe(Vector2i(4, 3))
+		return
+	
+	if sala_atual == SALA_CAVERNA:
+		# Primeiro contato: elementos fixos e HP baixo (1 fireball com poder = 3)
+		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(3, 2), 3, "fogo")
+		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(4, 6), 3, "gelo")
+		return
+	
+	if sala_atual == 6:
+		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(7, 2), 4)
+		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(3, 4), 4)
+		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 5), 2)
+		return
+	
+	if sala_atual == 7:
+		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(6, 1), 4)
+		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(3, 5), 4)
+		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(7, 4), 2)
+		return
+	
+	if sala_atual == SALA_CAVERNA_CHEFE:
+		gerenciador_inimigos.spawnar_chefe_caverna(Vector2i(4, 3))
 		return
 	
 	var quantidade = min(sala_atual, 4)
@@ -503,10 +568,16 @@ func _on_tutorial_concluido():
 	_adicionar_saida("------------------------------")
 
 func _on_chefe_derrotado():
-	_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
+	if sala_atual == SALA_CAVERNA_CHEFE:
+		interpretador.variaveis.erase("sinal_oraculo")
+		_adicionar_saida("[chefe] O Oraculo Bifurcado foi silenciado! A saida esta livre.")
+	else:
+		_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
 	_adicionar_saida("------------------------------")
 
 func _on_chegou_na_saida():
+	if trocando_sala:
+		return
 	if tutorial.esta_ativo():
 		_adicionar_saida("[tutorial] Saida encontrada. Preparando a Fase 1...")
 		_adicionar_saida("------------------------------")
@@ -537,9 +608,25 @@ func _on_chegou_na_saida():
 		_adicionar_saida("------------------------------")
 		return
 	
+	if sala_atual == SALA_CAVERNA_CHEFE:
+		if gerenciador_inimigos.chefe_caverna_vivo():
+			_adicionar_saida("[chefe] O Oraculo Bifurcado ainda ecoa pela sala!")
+			_adicionar_saida("Derrote-o primeiro.")
+			_adicionar_saida("------------------------------")
+			return
+		_concluir_fase_2()
+		return
+	
+	if _em_caverna() and gerenciador_inimigos.tem_inimigos_vivos():
+		_adicionar_saida("[fase 2] Os Ecos ainda ecoam pela caverna.")
+		_adicionar_saida("Derrote-os antes de avancar.")
+		_adicionar_saida("------------------------------")
+		return
+	
 	_adicionar_saida("[sala] Sala " + str(sala_atual + 1) + " concluida!")
 	_adicionar_saida("Carregando proxima sala...")
 	_adicionar_saida("------------------------------")
+	trocando_sala = true
 	await get_tree().create_timer(0.8).timeout
 	_iniciar_sala(sala_atual + 1)
 	_adicionar_saida("[mapa] Sala " + str(sala_atual + 1))
@@ -564,6 +651,39 @@ func _concluir_fase_1():
 	fase_1_concluida = true
 	_adicionar_saida("[fase 1] Clareira da Floresta concluida!")
 	_adicionar_saida("Voce venceu a primeira fase usando comandos Python.")
+	_adicionar_saida("Uma fenda de cristal se abre no chao... descendo para as Cavernas Condicionais.")
+	_adicionar_saida("------------------------------")
+	trocando_sala = true
+	await get_tree().create_timer(1.2).timeout
+	if sala_atual == SALA_FLORESTA and player.vivo:
+		await _iniciar_sala(SALA_CAVERNA)
+	else:
+		trocando_sala = false
+
+func _anunciar_fase_2():
+	_adicionar_saida("[fase 2] Encruzilhada das Cavernas")
+	_adicionar_saida("Uma comporta de cristal roxa bloqueia o unico caminho para a saida.")
+	_adicionar_saida("Fique ao lado dela e digite desafio(comporta): ela exige if / elif / else.")
+	_adicionar_saida("Ecos elementais so caem com fireball do elemento escrito embaixo deles.")
+	_adicionar_saida("Crie uma variavel com o nome do elemento: fogo = 3  e depois  fireball(fogo, 'direcao').")
+	_adicionar_saida("Ataques comuns atravessam os Ecos.")
+	_adicionar_saida("------------------------------")
+
+func _anunciar_chefe_caverna():
+	_adicionar_saida("[chefe] O Oraculo Bifurcado desperta no nucleo da caverna!")
+	_adicionar_saida("Ele esta preso ao cristal e nao se move, mas fere quem chega perto.")
+	_adicionar_saida("A cada ataque o sinal dele muda. O sinal atual fica guardado em sinal_oraculo.")
+	_adicionar_saida("Tenha fogo, gelo e arcano definidos (ex.: fogo = 3) e use fireball com o elemento do sinal.")
+	_adicionar_saida("Na ultima fase o sinal fica oculto: so uma linha if / elif / else o derrota.")
+	_adicionar_saida("------------------------------")
+
+func _concluir_fase_2():
+	if fase_2_concluida:
+		return
+	
+	fase_2_concluida = true
+	_adicionar_saida("[fase 2] Cavernas Condicionais concluidas!")
+	_adicionar_saida("Sua cadeia if / elif / else respondeu a todos os sinais do Oraculo.")
 	_adicionar_saida("Fim da versao jogavel desta etapa.")
 	_adicionar_saida("------------------------------")
 
@@ -630,6 +750,8 @@ func _preparar_proximo_comando():
 func _on_comando_enviado(texto: String):
 	if desafios and desafios.painel.visible:
 		return
+	if desafios_caverna and desafios_caverna.painel.visible:
+		return
 	texto = texto.strip_edges()
 	if texto == "":
 		return
@@ -641,9 +763,10 @@ func _on_comando_enviado(texto: String):
 	_registrar_comando(texto)
 	if texto.begins_with("desafio"):
 		_adicionar_saida(">>> " + texto)
-		_adicionar_saida(desafios.comando(texto))
+		var gerenciador_desafio = desafios_caverna if sala_atual == SALA_CAVERNA else desafios
+		_adicionar_saida(gerenciador_desafio.comando(texto))
 		input_line.clear()
-		if not desafios.painel.visible:
+		if not gerenciador_desafio.painel.visible:
 			input_line.grab_focus()
 		return
 	
@@ -670,6 +793,7 @@ func _on_comando_enviado(texto: String):
 		_adicionar_saida(resposta)
 	_atualizar_levelup_visibilidade()
 	_processar_turno_pos_jogador(resposta, escolha_pendente_antes)
+	_sincronizar_sinal_oraculo()
 	_pedir_feedback_erro(texto, resposta)
 	_adicionar_saida("------------------------------")
 	_preparar_proximo_comando()
@@ -704,6 +828,10 @@ func _processar_turno_pos_jogador(resposta_jogador: String, escolha_pendente_ant
 	if sala_atual == SALA_FLORESTA and not fase_1_concluida:
 		if player.grid_pos == mapa.saida_pos and not gerenciador_inimigos.tem_inimigos_vivos():
 			_concluir_fase_1()
+	
+	if sala_atual == SALA_CAVERNA_CHEFE and not fase_2_concluida:
+		if player.grid_pos == mapa.saida_pos and not gerenciador_inimigos.chefe_caverna_vivo():
+			_concluir_fase_2()
 
 func _recuperar_mana_fim_rodada():
 	var resposta_mana = player.recuperar_mana_rodada()
@@ -711,10 +839,35 @@ func _recuperar_mana_fim_rodada():
 		_adicionar_saida(resposta_mana)
 
 func _deve_processar_turno_inimigos() -> bool:
-	return sala_atual == SALA_FLORESTA and not fase_1_concluida and player.vivo and player.pending_escolha.is_empty()
+	if not player.vivo or not player.pending_escolha.is_empty():
+		return false
+	if trocando_sala:
+		return false
+	if sala_atual == SALA_FLORESTA:
+		return not fase_1_concluida
+	if _em_caverna():
+		return not fase_2_concluida
+	return false
+
+func _em_caverna() -> bool:
+	return sala_atual >= SALA_CAVERNA and sala_atual <= SALA_CAVERNA_CHEFE
+
+# Rodadas (recuperacao de mana) valem enquanto a fase atual nao terminou.
+# Antes, qualquer sala depois da floresta ficava sem rodadas.
+func _rodadas_ativas() -> bool:
+	if _em_caverna():
+		return not fase_2_concluida
+	return not fase_1_concluida
+
+func _sincronizar_sinal_oraculo():
+	var sinal = gerenciador_inimigos.sinal_chefe_caverna()
+	if sinal == "":
+		interpretador.variaveis.erase("sinal_oraculo")
+	else:
+		interpretador.variaveis["sinal_oraculo"] = sinal
 
 func _deve_contar_rodada(resposta_jogador: String, escolha_pendente_antes: bool = false) -> bool:
-	if fase_1_concluida:
+	if not _rodadas_ativas():
 		return false
 	if not player.vivo:
 		return false
@@ -776,6 +929,8 @@ func _reiniciar_run():
 	historico_index = 0
 	rascunho_terminal = ""
 	fase_1_concluida = false
+	fase_2_concluida = false
+	trocando_sala = false
 	player.resetar()
 	interpretador.variaveis.clear()
 	output_label.text = ""

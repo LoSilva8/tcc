@@ -116,6 +116,8 @@ func _mover(direcao: String) -> String:
 			return "Bloqueado. Para abrir a porta, digite desafio(porta)."
 		if mapa.sala_atual == 1 and nova_pos == mapa.BAU_POS:
 			return "Bloqueado. Para abrir o bau, digite desafio(bau)."
+		if mapa.sala_atual == 5 and nova_pos == mapa.COMPORTA_POS:
+			return "Bloqueado. Para estabilizar a comporta, digite desafio(comporta)."
 		return "Bloqueado. Ha uma parede nessa direcao."
 	
 	if gerenciador_inimigos and gerenciador_inimigos.tem_inimigo(nova_pos):
@@ -221,7 +223,8 @@ func _fireball_com_variavel(nome_variavel: String, direcao_arg: String) -> Strin
 		
 		if gerenciador_inimigos.tem_inimigo(alvo):
 			_mostrar_fireball(alvo)
-			var resultado = gerenciador_inimigos.atacar_posicao(alvo, dano, true, nome_variavel)
+			var encadeado = interpretador.ultimo_encadeado if interpretador else false
+			var resultado = gerenciador_inimigos.atacar_posicao(alvo, dano, true, nome_variavel, encadeado)
 			return "Fireball lancada com " + nome_variavel + " = " + str(poder) + ". Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + ".\n" + resultado
 	
 	_mostrar_fireball(ultimo_ponto)

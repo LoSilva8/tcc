@@ -31,7 +31,7 @@ func eh_erro(resposta: String) -> bool:
 	var texto = resposta.to_lower()
 	if texto.begins_with("erro") or "erro:" in texto or "erro de sintaxe" in texto:
 		return true
-	for marcador in ["nao reconhecido", "direcao invalida", "nao foi definida", "precisa de uma variavel numerica", "mana insuficiente", "bloqueado", "use duas linhas:", "uma variavel precisa", "escolha um nome", "use a mesma variavel", "mas o bau tem", "monte 4 linhas:", "falta :", "recue cada acao", "compare a chave", "com a chave, a acao deve"]:
+	for marcador in ["nao reconhecido", "direcao invalida", "nao foi definida", "precisa de uma variavel numerica", "mana insuficiente", "bloqueado", "use duas linhas:", "uma variavel precisa", "escolha um nome", "use a mesma variavel", "mas o bau tem", "monte 4 linhas:", "falta :", "recue cada acao", "compare a chave", "com a chave, a acao deve", "monte 6 linhas:", "precisa comecar com", "precisa ser exatamente", "sua cadeia executa"]:
 		if marcador in texto:
 			return true
 	return false

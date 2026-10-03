@@ -15,12 +15,19 @@ const FOREST_FLOOR_B = Color(0.13, 0.27, 0.15)
 const FOREST_WALL = Color(0.08, 0.18, 0.08)
 const FOREST_WALL_DARK = Color(0.035, 0.075, 0.04)
 const FOREST_WALL_LIGHT = Color(0.3, 0.55, 0.2, 0.5)
+const CAVE_FLOOR_A = Color(0.15, 0.115, 0.22)
+const CAVE_FLOOR_B = Color(0.175, 0.135, 0.255)
+const CAVE_WALL = Color(0.2, 0.14, 0.3)
+const CAVE_WALL_DARK = Color(0.09, 0.06, 0.14)
+const CAVE_WALL_LIGHT = Color(0.62, 0.4, 0.92, 0.5)
 const BOSS_SAIDA_AREA_INICIO = Vector2i(9, 3)
 const BOSS_SAIDA_AREA_TAMANHO = Vector2i(4, 5)
 const BAU_POS = Vector2i(3, 7)
 const PORTA_POS = Vector2i(8, 5)
+const COMPORTA_POS = Vector2i(7, 4)
 var bau_aberto = false
 var porta_aberta = false
+var comporta_aberta = false
 
 var paredes: Array = []
 var saida_pos: Vector2i = Vector2i(-1, -1)
@@ -77,6 +84,44 @@ var layouts = [
 		"#.......#",
 		"#########",
 	],
+	[
+		"##############",
+		"#......#.....#",
+		"#......#.....#",
+		"#......#.....#",
+		"#............#",
+		"#......#.....#",
+		"#......#.....#",
+		"#......#....E#",
+		"##############",
+	],
+	[
+		"#########",
+		"#.......#",
+		"#.#####.#",
+		"#.#.E.#.#",
+		"#.#...#.#",
+		"#.......#",
+		"#########",
+	],
+	[
+		"#########",
+		"#...#...#",
+		"#...#...#",
+		"#.......#",
+		"###.###.#",
+		"#.....E.#",
+		"#########",
+	],
+	[
+		"#########",
+		"#..E....#",
+		"#.#####.#",
+		"#.......#",
+		"#.###.#.#",
+		"#.......#",
+		"#########",
+	],
 ]
 
 func _ready():
@@ -87,18 +132,19 @@ func carregar_sala(indice: int):
 	sala_atual = indice
 	bau_aberto = false
 	porta_aberta = false
-	
+	comporta_aberta = false
+
 	for filho in get_children():
 		filho.queue_free()
 	paredes.clear()
 	saida_pos = Vector2i(-1, -1)
-	
+
 	var layout = []
 	if indice < layouts.size():
 		layout = layouts[indice]
 	else:
 		layout = _gerar_layout_aleatorio()
-	
+
 	layout_atual = layout
 	_construir_sala(layout)
 	queue_redraw()
@@ -109,7 +155,7 @@ func _construir_sala(layout: Array):
 		for x in range(linha.length()):
 			var cel = linha.substr(x, 1)
 			var pos_pixel = Vector2(x, y) * TAMANHO_CELULA
-			
+
 			if cel == "#":
 				_criar_parede(pos_pixel, Vector2i(x, y))
 			elif cel == "E":
@@ -119,24 +165,27 @@ func _construir_sala(layout: Array):
 func _draw():
 	if layout_atual.is_empty():
 		return
-	
+
 	var linhas = layout_atual.size()
 	var colunas = layout_atual[0].length()
 	var sala_rect = Rect2(Vector2.ZERO, Vector2(colunas, linhas) * TAMANHO_CELULA)
-	
+
 	if _eh_floresta():
 		draw_rect(sala_rect.grow(18), Color(0.025, 0.06, 0.03))
 		draw_rect(sala_rect.grow(6), Color(0.2, 0.42, 0.16, 0.45), false, 3.0)
+	elif _eh_caverna():
+		draw_rect(sala_rect.grow(18), Color(0.045, 0.03, 0.07))
+		draw_rect(sala_rect.grow(6), Color(0.42, 0.26, 0.6, 0.45), false, 3.0)
 	else:
 		draw_rect(sala_rect.grow(18), Color(0.025, 0.028, 0.036))
 		draw_rect(sala_rect.grow(6), Color(0.16, 0.23, 0.25, 0.45), false, 3.0)
-	
+
 	for y in range(linhas):
 		for x in range(colunas):
 			var pos = Vector2(x, y) * TAMANHO_CELULA
 			var rect = Rect2(pos, Vector2(TAMANHO_CELULA, TAMANHO_CELULA))
 			var cel = layout_atual[y].substr(x, 1)
-			
+
 			if cel == "#":
 				_desenhar_parede(rect)
 			elif cel == "E":
@@ -144,11 +193,13 @@ func _draw():
 				_desenhar_saida(rect)
 			else:
 				_desenhar_chao(rect, x, y)
-	
+
 	if _eh_floresta():
 		_desenhar_area_boss_saida()
 		_desenhar_desafios()
-	
+	elif sala_atual == 5:
+		_desenhar_comporta()
+
 	for x in range(colunas + 1):
 		var px = x * TAMANHO_CELULA
 		draw_line(Vector2(px, 0), Vector2(px, linhas * TAMANHO_CELULA), GRID, 1.0)
@@ -160,20 +211,33 @@ func _desenhar_chao(rect: Rect2, x: int, y: int):
 	var base = FLOOR_A if (x + y) % 2 == 0 else FLOOR_B
 	if _eh_floresta():
 		base = FOREST_FLOOR_A if (x + y) % 2 == 0 else FOREST_FLOOR_B
+	elif _eh_caverna():
+		base = CAVE_FLOOR_A if (x + y) % 2 == 0 else CAVE_FLOOR_B
 	draw_rect(rect, base)
 	draw_rect(rect.grow(-8), Color(1, 1, 1, 0.018))
 	if _eh_floresta():
 		draw_circle(rect.position + Vector2(14, 14), 2.2, Color(0.55, 0.8, 0.24, 0.28))
 		draw_circle(rect.position + Vector2(49, 45), 1.7, Color(0.75, 0.55, 0.22, 0.2))
 		_desenhar_detalhe_floresta(rect, x, y)
+	elif _eh_caverna():
+		draw_circle(rect.position + Vector2(16, 48), 1.8, Color(0.75, 0.55, 0.95, 0.3))
+		draw_circle(rect.position + Vector2(46, 16), 1.4, Color(0.55, 0.75, 0.98, 0.22))
 	else:
 		draw_circle(rect.position + Vector2(14, 14), 2.0, Color(0.42, 0.55, 0.56, 0.18))
 		draw_circle(rect.position + Vector2(49, 45), 1.5, Color(0.42, 0.55, 0.56, 0.14))
 
 func _desenhar_parede(rect: Rect2):
-	var parede_escura = FOREST_WALL_DARK if _eh_floresta() else WALL_DARK
-	var parede = FOREST_WALL if _eh_floresta() else WALL
-	var brilho = FOREST_WALL_LIGHT if _eh_floresta() else WALL_LIGHT
+	var parede_escura = WALL_DARK
+	var parede = WALL
+	var brilho = WALL_LIGHT
+	if _eh_floresta():
+		parede_escura = FOREST_WALL_DARK
+		parede = FOREST_WALL
+		brilho = FOREST_WALL_LIGHT
+	elif _eh_caverna():
+		parede_escura = CAVE_WALL_DARK
+		parede = CAVE_WALL
+		brilho = CAVE_WALL_LIGHT
 	draw_rect(rect, parede_escura)
 	draw_rect(rect.grow(-4), parede)
 	draw_line(rect.position + Vector2(7, 8), rect.position + Vector2(rect.size.x - 8, 8), brilho, 2.0)
@@ -195,7 +259,7 @@ func _desenhar_saida(rect: Rect2):
 func _desenhar_detalhe_floresta(rect: Rect2, x: int, y: int):
 	var detalhe = _tile_hash(x, y, 1) % 100
 	var centro = rect.position + Vector2(10 + (_tile_hash(x, y, 2) % 45), 10 + (_tile_hash(x, y, 3) % 43))
-	
+
 	if detalhe < 14:
 		var petala = Color(0.98, 0.72, 0.42, 0.58)
 		draw_circle(centro + Vector2(-2, 0), 1.8, petala)
@@ -220,17 +284,17 @@ func _desenhar_area_boss_saida():
 		Vector2(BOSS_SAIDA_AREA_INICIO) * TAMANHO_CELULA,
 		Vector2(BOSS_SAIDA_AREA_TAMANHO) * TAMANHO_CELULA
 	)
-	
+
 	for y in range(BOSS_SAIDA_AREA_INICIO.y, BOSS_SAIDA_AREA_INICIO.y + BOSS_SAIDA_AREA_TAMANHO.y):
 		for x in range(BOSS_SAIDA_AREA_INICIO.x, BOSS_SAIDA_AREA_INICIO.x + BOSS_SAIDA_AREA_TAMANHO.x):
 			var pos = Vector2i(x, y)
 			if not posicao_valida(pos) and pos != saida_pos:
 				continue
-			
+
 			var tile_rect = Rect2(Vector2(pos) * TAMANHO_CELULA, Vector2(TAMANHO_CELULA, TAMANHO_CELULA))
 			draw_rect(tile_rect.grow(-5), Color(0.92, 0.52, 0.18, 0.14))
 			draw_rect(tile_rect.grow(-12), Color(1.0, 0.82, 0.36, 0.05), false, 1.0)
-	
+
 	draw_rect(area_rect.grow(-5), Color(1.0, 0.62, 0.22, 0.82), false, 3.0)
 	draw_rect(area_rect.grow(-10), Color(0.72, 1.0, 0.42, 0.32), false, 1.5)
 
@@ -242,6 +306,8 @@ func _criar_saida(_pos_pixel: Vector2):
 
 func eh_parede(grid_pos: Vector2i) -> bool:
 	if sala_atual == 1 and (grid_pos == BAU_POS or (grid_pos == PORTA_POS and not porta_aberta)):
+		return true
+	if sala_atual == 5 and grid_pos == COMPORTA_POS and not comporta_aberta:
 		return true
 	return grid_pos in paredes
 
@@ -259,6 +325,15 @@ func _desenhar_desafios():
 		draw_circle(p + Vector2(36, 33), 6, Color("f3ce68"))
 	draw_string(ThemeDB.fallback_font, p + Vector2(4, 17), "PORTA", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
 
+func _desenhar_comporta():
+	var c = Vector2(COMPORTA_POS) * TAMANHO_CELULA
+	draw_rect(Rect2(c + Vector2(4, 2), Vector2(56, 60)), Color("a37bd6"), false, 4)
+	if not comporta_aberta:
+		draw_rect(Rect2(c + Vector2(9, 5), Vector2(46, 56)), Color("3a2856"))
+		draw_circle(c + Vector2(36, 20), 7, Color("d68bff"))
+		draw_circle(c + Vector2(36, 44), 7, Color("8bd6ff"))
+	draw_string(ThemeDB.fallback_font, c + Vector2(0, 17), "COMPORTA", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.WHITE)
+
 func posicao_valida(grid_pos: Vector2i) -> bool:
 	if layout_atual.is_empty():
 		return false
@@ -274,6 +349,9 @@ func checar_saida(grid_pos: Vector2i) -> bool:
 func _eh_floresta() -> bool:
 	return sala_atual == 1
 
+func _eh_caverna() -> bool:
+	return sala_atual >= 5 and sala_atual <= 8
+
 func area_boss_saida_inicio() -> Vector2i:
 	return BOSS_SAIDA_AREA_INICIO
 
@@ -284,7 +362,7 @@ func _gerar_layout_aleatorio() -> Array:
 	var layout = []
 	var linhas = 7
 	var colunas = 9
-	
+
 	for y in range(linhas):
 		var linha = ""
 		for x in range(colunas):
@@ -296,9 +374,9 @@ func _gerar_layout_aleatorio() -> Array:
 				else:
 					linha += "."
 		layout.append(linha)
-	
+
 	var saida_y = randi_range(1, linhas - 2)
 	var linha_saida = layout[saida_y]
 	layout[saida_y] = linha_saida.substr(0, colunas - 2) + "E#"
-	
+
 	return layout
