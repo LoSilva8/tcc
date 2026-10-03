@@ -17,9 +17,7 @@ func _testar():
 	jogo.ia.habilitado = false
 	await process_frame
 	await process_frame
-	jogo.tutorial.ativo = false
-	jogo.tutorial.tutorial_box.visible = false
-
+	await _testar_pular_tutorial()
 	_testar_interpretador()
 	await _testar_transicao_floresta_caverna()
 	_testar_comporta()
@@ -33,6 +31,17 @@ func _testar():
 	jogo.queue_free()
 	await process_frame
 	quit(1 if falhas else 0)
+
+# ─── Pular tutorial = mesmo caminho do fim natural ──────────────────
+
+func _testar_pular_tutorial():
+	var resposta = jogo.debug_console._executar("tutorial_skip")
+	await create_timer(0.3).timeout
+	verificar(not jogo.tutorial.esta_ativo(), "tutorial_skip deve encerrar o tutorial.")
+	verificar(jogo.player.xp_habilitado, "tutorial_skip deve liberar XP como o fim natural do tutorial.")
+	verificar(jogo.sala_atual == jogo.SALA_FLORESTA, "tutorial_skip deve levar a Fase 1.")
+	verificar("[fase 1] Clareira" in jogo.output_label.text, "tutorial_skip deve anunciar a Fase 1.")
+	verificar("ja foi concluido" in jogo.debug_console._executar("tutorial_skip"), "Segundo tutorial_skip nao deve repetir a transicao.")
 
 # ─── Interpretador: if / elif / else, and / or, strings ─────────────
 
@@ -140,6 +149,13 @@ func _testar_ecos():
 	resposta = jogo.interpretador.executar("fireball(fogo, 'direita')")
 	verificar("dissipado" in resposta and not eco_fogo.vivo, "Elemento certo deve dissipar o Eco.")
 	verificar(not gi.tem_inimigo(Vector2i(3, 2)), "Eco derrotado deve sair do mapa.")
+	verificar(jogo.player.nivel == 2 and jogo.player.xp == 2, "Eco deve dar 7 XP (sobe para o Nv 2 com 2/8).")
+	verificar(not jogo.player.pending_escolha.is_empty(), "Subir de nivel na caverna deve pedir uma runa.")
+	var pos = jogo.player.grid_pos
+	jogo._on_comando_enviado("mover('cima')")
+	verificar(jogo.player.grid_pos == pos, "Com runa pendente, o jogo deve esperar a escolha.")
+	jogo._on_comando_enviado("escolher(1)")
+	verificar(jogo.player.pending_escolha.is_empty(), "escolher(1) deve liberar o jogo.")
 
 # ─── Rodadas: mana volta e inimigos agem na caverna ─────────────────
 
@@ -201,6 +217,8 @@ func _testar_oraculo():
 	verificar(oraculo.fase_atual() == "nucleo_arcano", "Fases visiveis devem cair com o elemento do sinal.")
 
 	var hp_nucleo = oraculo.hp_fases["nucleo_arcano"]
+	if not jogo.player.pending_escolha.is_empty():
+		jogo.player.escolher_upgrade(1)
 	jogo.player.mana = jogo.player.mana_max
 	var resposta = jogo.interpretador.executar("fireball(" + oraculo.sinal_atual + ", 'direita')")
 	verificar("ignora respostas isoladas" in resposta and oraculo.hp_fases["nucleo_arcano"] == hp_nucleo, "Nucleo deve exigir uma cadeia if/elif/else.")
@@ -217,7 +235,7 @@ func _testar_oraculo():
 	verificar(not jogo.interpretador.variaveis.has("sinal_oraculo"), "sinal_oraculo deve sumir com o chefe derrotado.")
 
 	jogo.player.grid_pos = Vector2i(2, 1)
-	jogo._on_comando_enviado("mover('direita')")
+	_enviar("mover('direita')")  # o +20 XP do Oraculo costuma pedir uma runa antes
 	verificar(jogo.fase_2_concluida, "Saida livre apos o Oraculo deve concluir a fase 2.")
 
 # ─── Reinicio ───────────────────────────────────────────────────────

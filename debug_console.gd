@@ -77,8 +77,15 @@ func _executar(comando: String) -> String:
 			if partes.size() < 2:
 				return "Uso: sala <numero>"
 			var n = int(partes[1])
+			var aviso = ""
+			# Pular para qualquer sala depois do tutorial equivale a pular o tutorial.
+			if n > 0 and main_ref.tutorial.esta_ativo():
+				main_ref.tutorial._concluir()
+				aviso = " (tutorial concluido automaticamente: XP liberado)"
 			main_ref._iniciar_sala(n)
-			return "Indo para sala " + str(n)
+			if n == main_ref.SALA_FLORESTA:
+				main_ref._anunciar_fase_1()
+			return "Indo para sala " + str(n) + aviso
 		
 		"spawn":
 			if partes.size() < 4:
@@ -109,9 +116,14 @@ func _executar(comando: String) -> String:
 					return "Tipo invalido. Use: normal, escudo, chefe, elemental ou oraculo"
 		
 		"tutorial_skip":
-			main_ref.tutorial.ativo = false
-			main_ref.tutorial.tutorial_box.visible = false
-			return "Tutorial pulado."
+			if not main_ref.tutorial.esta_ativo():
+				return "O tutorial ja foi concluido."
+			# Mesmo caminho do fim natural do tutorial: emite tutorial_concluido
+			# (libera XP e atualiza o livro) e leva para a Fase 1 com o anuncio dela.
+			main_ref.tutorial._concluir()
+			main_ref._iniciar_sala(main_ref.SALA_FLORESTA)
+			main_ref._anunciar_fase_1()
+			return "Tutorial pulado. XP liberado; voce esta na Fase 1."
 		
 		"hp":
 			if partes.size() < 2:
