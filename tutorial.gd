@@ -301,9 +301,14 @@ func _ir_para_etapa(indice: int):
 		_mostrar_etapa(etapa_atual)
 
 func _concluir():
+	encerrar()
+	emit_signal("tutorial_concluido")
+
+# Desliga o tutorial sem o sinal de conclusao: a run comeca direto em um bioma
+# porque o tutorial ja foi feito em outra partida (US01).
+func encerrar():
 	ativo = false
 	tutorial_box.visible = false
-	emit_signal("tutorial_concluido")
 
 func esta_ativo() -> bool:
 	return ativo
