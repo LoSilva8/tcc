@@ -4,3 +4,6 @@
 
 # Arquivos temporarios do editor Godot
 *.tmp
+
+# Texto do TCC fica so local: o repositorio e publico (gere com docs/docx2md.py)
+docs/TCC.md
