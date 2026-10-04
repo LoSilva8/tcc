@@ -25,6 +25,7 @@ func _testar():
 	jogo.interpretador.atraso_entre_acoes = 0.0
 	await process_frame
 	await process_frame
+	jogo.menu.fechar()  # como se o aluno tivesse saido do menu principal
 	verificar(jogo.grimorio_button.disabled, "Grimorio comeca bloqueado (tutorial).")
 	jogo.debug_console._executar("tutorial_skip")
 	await create_timer(0.3).timeout
@@ -110,8 +111,9 @@ func _testar_labirinto():
 	verificar("6" in saida and not ("Ainda nao" in saida), "Lacos funcionam no Labirinto.")
 
 func _testar_reinicio_preserva():
-	jogo._reiniciar_run()
-	await process_frame
-	await process_frame
-	verificar(jogo.sala_atual == 0, "reiniciar() volta ao tutorial.")
+	await jogo._on_comando_enviado("reiniciar()")
+	verificar(jogo.menu.visible, "reiniciar() encerra a run e volta ao menu principal.")
+	jogo.menu.fechar()
+	await jogo._iniciar_run(0)
+	verificar(jogo.sala_atual == jogo.SALA_FLORESTA and not jogo.tutorial.esta_ativo(), "Nova run pode comecar na Floresta sem refazer o tutorial (US01).")
 	verificar(jogo.grimorio_desbloqueado and jogo.lacos_desbloqueados and not jogo.grimorio_button.disabled, "Conceitos desbloqueados persistem entre runs (RF019).")

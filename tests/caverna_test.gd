@@ -234,10 +234,10 @@ func _testar_oraculo():
 # ─── Reinicio ───────────────────────────────────────────────────────
 
 func _testar_reinicio():
-	jogo._reiniciar_run()
+	jogo._iniciar_run()
 	await process_frame
 	await process_frame
-	verificar(jogo.sala_atual == 0 and not jogo.fase_2_concluida and not jogo.trocando_sala, "reiniciar() deve zerar o estado da fase 2.")
+	verificar(jogo.sala_atual == 0 and not jogo.fase_2_concluida and not jogo.trocando_sala, "Nova run deve zerar o estado da fase 2.")
 
 # ─── Utilitarios ────────────────────────────────────────────────────
 

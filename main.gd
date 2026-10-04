@@ -23,6 +23,12 @@ const SALA_LABIRINTO = 9
 const SALA_ELOS = 10
 const SALA_PONTE = 11
 const SALA_LABIRINTO_CHEFE = 12
+# Onde cada bioma comeca. O menu principal so oferece os biomas ja liberados.
+const BIOMAS = [
+	{"nome": "Floresta dos Primeiros Passos", "sala": SALA_FLORESTA},
+	{"nome": "Cavernas Condicionais", "sala": SALA_CAVERNA},
+	{"nome": "Labirinto dos Lacos", "sala": SALA_LABIRINTO},
+]
 const LIMITE_HISTORICO = 5
 const ATRASO_ENTRE_ACOES = 0.22
 const PALAVRAS_PYTHON = ["if", "elif", "else", "for", "while", "in", "not", "and", "or", "break", "continue", "pass", "True", "False", "None", "def", "return"]
@@ -37,10 +43,12 @@ var fase_2_concluida: bool = false
 var fase_3_concluida: bool = false
 var trocando_sala: bool = false
 var executando_programa: bool = false
-# Desbloqueios por bioma. Nao voltam a zero no reiniciar(): o roguelike preserva
-# os conceitos ja aprendidos entre as runs (RF019).
+# Desbloqueios por bioma. Nao voltam a zero entre runs: o roguelike preserva
+# os conceitos ja aprendidos (RF019). progresso grava tudo em disco (RNF005).
 var grimorio_desbloqueado: bool = false
 var lacos_desbloqueados: bool = false
+var progresso: RefCounted
+var menu: CanvasLayer
 var _sala_do_programa: int = -1
 var _programa_no_tutorial: bool = false
 var _programa_do_grimorio: bool = false
@@ -69,6 +77,8 @@ var grimorio_executar: Button
 func _ready():
 	ia = preload("res://feedback_ia.gd").new()
 	add_child(ia)
+	progresso = preload("res://progresso.gd").new()
+	progresso.carregar()
 	player.mapa = mapa
 	mapa.player = player
 	player.gerenciador_inimigos = gerenciador_inimigos
@@ -116,6 +126,34 @@ func _ready():
 	_adicionar_saida("------------------------------")
 	
 	debug_console.configurar(self)
+	
+	menu = preload("res://menu_principal.gd").new()
+	add_child(menu)
+	menu.configurar(self)
+	menu.abrir()
+
+func novo_jogo():
+	progresso.zerar()
+	progresso.ativo = true
+	progresso.salvar()
+	grimorio_desbloqueado = false
+	lacos_desbloqueados = false
+	_atualizar_botao_grimorio()
+	menu.fechar()
+	await _iniciar_run()
+
+func continuar(bioma: int):
+	progresso.ativo = true
+	grimorio_desbloqueado = progresso.grimorio_desbloqueado
+	lacos_desbloqueados = progresso.lacos_desbloqueados
+	_atualizar_botao_grimorio()
+	menu.fechar()
+	await _iniciar_run(clampi(bioma, 0, mini(progresso.bioma_liberado, BIOMAS.size() - 1)))
+
+func _voltar_ao_menu():
+	interpretador.cancelar_execucao()
+	ia.cancelar()
+	menu.abrir()
 
 func _construir_hud_recursos_ui():
 	var vbox = $UI/PanelContainer/VBoxContainer
@@ -359,6 +397,25 @@ func _atualizar_desbloqueios(indice: int):
 		lacos_desbloqueados = true
 		_adicionar_saida("[lacos] for e while liberados! Agora voce pode repetir acoes sem reescreve-las.")
 	_atualizar_botao_grimorio()
+	_salvar_progresso()
+
+func _bioma_da_sala(indice: int) -> int:
+	var bioma = 0
+	for i in range(BIOMAS.size()):
+		if indice >= BIOMAS[i]["sala"]:
+			bioma = i
+	return bioma
+
+# Fora de uma partida iniciada pelo menu (ex.: nos testes) o progresso nao muda
+# nem na memoria: o menu continua mostrando o que esta no disco.
+func _salvar_progresso():
+	if not progresso.ativo:
+		return
+	progresso.grimorio_desbloqueado = grimorio_desbloqueado
+	progresso.lacos_desbloqueados = lacos_desbloqueados
+	# So se chega ao inicio de um bioma concluindo o anterior (RF015): isso o libera.
+	progresso.bioma_liberado = maxi(progresso.bioma_liberado, _bioma_da_sala(sala_atual))
+	progresso.salvar()
 
 func _atualizar_botao_grimorio():
 	if grimorio_button == null:
@@ -598,7 +655,7 @@ func _texto_livro_magias() -> String:
 	linhas.append("")
 	linhas.append("Sistema")
 	linhas.append("  reiniciar()")
-	linhas.append("  Recomeca a run desde o tutorial.")
+	linhas.append("  Encerra a run e volta ao menu principal.")
 	linhas.append("  reiniciar_sala()")
 	linhas.append("  Recomeca so a sala atual (vida, mana e XP ficam).")
 	linhas.append("")
@@ -831,6 +888,9 @@ func _spawnar_inimigos_sala():
 
 func _on_tutorial_concluido():
 	player.xp_habilitado = true
+	if progresso.ativo:
+		progresso.tutorial_concluido = true
+	_salvar_progresso()
 	_atualizar_livro_magias()
 	_adicionar_saida("[ok] Tutorial concluido. A Fase 1 comeca na proxima sala.")
 	_adicionar_saida("------------------------------")
@@ -1014,6 +1074,8 @@ func _concluir_fase_3():
 	_adicionar_saida("------------------------------")
 
 func _input(event):
+	if menu.visible:
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.ctrl_pressed and event.keycode == KEY_G:
 		_alternar_grimorio()
 		get_viewport().set_input_as_handled()
@@ -1096,7 +1158,7 @@ func _on_comando_enviado(texto: String):
 	ia.cancelar()
 	
 	if texto == "reiniciar()":
-		_reiniciar_run()
+		_voltar_ao_menu()
 		return
 	_registrar_comando(texto)
 	if texto == "reiniciar_sala()":
@@ -1340,7 +1402,7 @@ func _deve_contar_rodada(resposta_jogador: String, escolha_pendente_antes: bool 
 func _on_jogador_morreu():
 	ia.cancelar()
 	_adicionar_saida("[run] Run encerrada. Voce chegou ate a sala " + str(sala_atual + 1) + ".")
-	_adicionar_saida("Digite reiniciar() para tentar novamente.")
+	_adicionar_saida("Digite reiniciar() para voltar ao menu e comecar uma nova run. Os biomas e conceitos liberados continuam salvos.")
 	_adicionar_saida("------------------------------")
 
 func _on_hp_alterado(hp_atual: int, hp_max: int):
@@ -1355,7 +1417,10 @@ func _on_mana_alterada(mana_atual: int, mana_maximo: int):
 	if mana_texto:
 		mana_texto.text = str(mana_atual) + "/" + str(mana_maximo)
 
-func _reiniciar_run():
+# Comeca uma run nova (RF020: vida, mana, XP e nivel zeram; os desbloqueios ficam).
+# bioma = -1 comeca pelo tutorial. Um indice de BIOMAS comeca direto naquele
+# bioma, sem refazer o tutorial (US01, US03).
+func _iniciar_run(bioma: int = -1):
 	interpretador.cancelar_execucao()
 	historico.clear()
 	historico_index = 0
@@ -1368,12 +1433,19 @@ func _reiniciar_run():
 	interpretador.variaveis.clear()
 	output_label.text = ""
 	await get_tree().process_frame
-	_iniciar_sala(0)
-	tutorial.iniciar()
-	_atualizar_livro_magias()
 	levelup_panel.visible = false
 	_adicionar_saida("[run] Nova run iniciada.")
 	_adicionar_saida("------------------------------")
+	if bioma < 0:
+		_iniciar_sala(SALA_TUTORIAL)
+		tutorial.iniciar()
+	else:
+		tutorial.encerrar()
+		player.xp_habilitado = true
+		await _iniciar_sala(BIOMAS[bioma]["sala"])
+		if BIOMAS[bioma]["sala"] == SALA_FLORESTA:
+			_anunciar_fase_1()
+	_atualizar_livro_magias()
 	input_line.clear()
 	input_line.grab_focus()
 
