@@ -37,6 +37,10 @@ var fase_2_concluida: bool = false
 var fase_3_concluida: bool = false
 var trocando_sala: bool = false
 var executando_programa: bool = false
+# Desbloqueios por bioma. Nao voltam a zero no reiniciar(): o roguelike preserva
+# os conceitos ja aprendidos entre as runs (RF019).
+var grimorio_desbloqueado: bool = false
+var lacos_desbloqueados: bool = false
 var _sala_do_programa: int = -1
 var _programa_no_tutorial: bool = false
 var _programa_do_grimorio: bool = false
@@ -304,7 +308,7 @@ func _construir_grimorio_ui():
 	grimorio_editor.auto_brace_completion_enabled = true
 	grimorio_editor.syntax_highlighter = criar_realce_python()
 	grimorio_editor.add_theme_font_size_override("font_size", 16)
-	grimorio_editor.placeholder_text = "while caminho_livre('direita'):\n    mover('direita')"
+	grimorio_editor.placeholder_text = "if minha_mana() >= 5:\n    fireball(poder, 'direita')\nelse:\n    mover('esquerda')"
 	grimorio_editor.gui_input.connect(_on_grimorio_input)
 	grimorio_editor.text_changed.connect(func(): ia.cancelar())
 	coluna.add_child(grimorio_editor)
@@ -329,6 +333,7 @@ func _construir_grimorio_ui():
 	grimorio_status.add_theme_color_override("font_color", Color(0.72, 0.8, 0.95))
 	grimorio_status.add_theme_font_size_override("font_size", 13)
 	acoes.add_child(grimorio_status)
+	_atualizar_botao_grimorio()
 
 func criar_realce_python() -> CodeHighlighter:
 	var realce = CodeHighlighter.new()
@@ -345,13 +350,41 @@ func criar_realce_python() -> CodeHighlighter:
 	realce.add_color_region("#", "", Color(0.45, 0.52, 0.6), true)
 	return realce
 
+func _atualizar_desbloqueios(indice: int):
+	if indice >= SALA_CAVERNA and not grimorio_desbloqueado:
+		grimorio_desbloqueado = true
+		_adicionar_saida("[grimorio] Voce recebeu o Grimorio! Agora da para escrever blocos de varias linhas, como if / elif / else.")
+		_adicionar_saida("Abra com o botao { } ou Ctrl+G. Terminar uma linha com : tambem abre o grimorio.")
+	if indice >= SALA_LABIRINTO and not lacos_desbloqueados:
+		lacos_desbloqueados = true
+		_adicionar_saida("[lacos] for e while liberados! Agora voce pode repetir acoes sem reescreve-las.")
+	_atualizar_botao_grimorio()
+
+func _atualizar_botao_grimorio():
+	if grimorio_button == null:
+		return
+	grimorio_button.disabled = not grimorio_desbloqueado
+	if grimorio_desbloqueado:
+		grimorio_button.tooltip_text = "Grimorio: escreva codigo com varias linhas (Ctrl+G). Dica: terminar a linha com : tambem abre o grimorio."
+	else:
+		grimorio_button.tooltip_text = "Grimorio bloqueado: ele e liberado nas Cavernas Condicionais, depois do primeiro chefe."
+
+func _avisar_grimorio_bloqueado():
+	_adicionar_saida("[grimorio] O grimorio sera liberado nas Cavernas Condicionais, depois do primeiro chefe.")
+
 func _alternar_grimorio():
+	if not grimorio_desbloqueado:
+		_avisar_grimorio_bloqueado()
+		return
 	if grimorio_panel.visible:
 		_fechar_grimorio()
 	else:
 		_abrir_grimorio()
 
 func _abrir_grimorio(texto_inicial: String = ""):
+	if not grimorio_desbloqueado:
+		_avisar_grimorio_bloqueado()
+		return
 	if texto_inicial != "":
 		grimorio_editor.text = texto_inicial
 		grimorio_editor.set_caret_line(grimorio_editor.get_line_count() - 1)
@@ -379,7 +412,7 @@ func _on_grimorio_input(evento):
 		_fechar_grimorio()
 
 func _executar_grimorio():
-	if executando_programa:
+	if executando_programa or not grimorio_desbloqueado:
 		return
 	if grimorio_editor.text.strip_edges() == "":
 		grimorio_status.text = "Escreva um programa primeiro."
@@ -548,9 +581,17 @@ func _texto_livro_magias() -> String:
 		if sala_atual == SALA_PONTE:
 			linhas.append("  passos guarda o caminho da ponte (uma lista de direcoes).")
 		linhas.append("")
-	if not tutorial.esta_ativo():
+	if not tutorial.esta_ativo() and not grimorio_desbloqueado:
+		linhas.append("Grimorio { }")
+		linhas.append("  Bloqueado: liberado nas Cavernas Condicionais, depois do primeiro chefe.")
+		linhas.append("")
+	if grimorio_desbloqueado:
 		linhas.append("Grimorio { }  (Ctrl+G)")
-		linhas.append("  Editor de varias linhas: if, for e while com blocos recuados.")
+		if lacos_desbloqueados:
+			linhas.append("  Editor de varias linhas: if, for e while com blocos recuados.")
+		else:
+			linhas.append("  Editor de varias linhas para blocos recuados (if / elif / else).")
+			linhas.append("  for e while serao liberados no Labirinto dos Lacos.")
 		linhas.append("  Cada acao (mover, atacar, fireball) e um turno: os inimigos agem entre elas.")
 		linhas.append("  Esc interrompe um programa em execucao.")
 		linhas.append("")
@@ -705,6 +746,8 @@ func _iniciar_sala(indice: int):
 		_adicionar_saida("Cada parte exige uma variavel com nome especifico (veja acima dele).")
 		_adicionar_saida("Use: nome = valor  e depois  fireball(nome, 'direcao')")
 		_adicionar_saida("------------------------------")
+	
+	_atualizar_desbloqueios(indice)
 	
 	if indice == SALA_CAVERNA:
 		_anunciar_fase_2()
@@ -1070,6 +1113,10 @@ func _on_comando_enviado(texto: String):
 			input_line.grab_focus()
 		return
 	if texto.ends_with(":"):
+		if not grimorio_desbloqueado:
+			_adicionar_saida(">>> " + texto)
+			_adicionar_saida("Blocos de varias linhas usam o grimorio, liberado nas Cavernas Condicionais. Por enquanto, escreva tudo na mesma linha. Ex.: if poder > 2: mover('direita')")
+			return
 		# if/for/while terminados em : continuam no grimorio, com a linha de baixo ja recuada.
 		input_line.clear()
 		_abrir_grimorio(texto + "\n    ")
@@ -1085,6 +1132,7 @@ func _executar_programa(codigo: String) -> String:
 	executando_programa = true
 	_sala_do_programa = sala_atual
 	_programa_no_tutorial = tutorial.esta_ativo()
+	interpretador.lacos_liberados = lacos_desbloqueados
 	_eco_programa(codigo)
 	if _programa_do_grimorio:
 		grimorio_executar.disabled = true

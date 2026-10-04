@@ -22,6 +22,10 @@ func _testar():
 	await _testar_restricoes_do_tutorial()
 	jogo.debug_console._executar("tutorial_skip")
 	await create_timer(0.3).timeout
+	# Estes testes cobrem a mecanica do grimorio: comecam como um jogador veterano,
+	# que ja passou pelo Labirinto (os desbloqueios persistem, RF019).
+	# A progressao em si e coberta por tests/progressao_test.gd.
+	await jogo._iniciar_sala(jogo.SALA_LABIRINTO)
 	await _testar_cada_acao_e_um_turno()
 	await _testar_instrucoes_sem_turno()
 	await _testar_while_com_sensor()

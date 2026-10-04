@@ -33,6 +33,8 @@ var atraso_entre_acoes: float = 0.0
 var ao_agir: Callable
 var ao_escrever: Callable
 var executando: bool = false
+# Progressao por bioma: o main desliga os lacos ate o Labirinto dos Lacos.
+var lacos_liberados: bool = true
 
 var _tokens: Array = []
 var _pos: int = 0
@@ -282,15 +284,16 @@ func _parse_stmt() -> Dictionary:
 		match t.v:
 			"if":
 				return _parse_if()
-			"while":
-				return _parse_while()
-			"for":
-				return _parse_for()
+			"while", "for":
+				if not lacos_liberados:
+					_definir_erro("Ainda nao: lacos (for e while) serao liberados no Labirinto dos Lacos. Por enquanto, repita o comando linha a linha.", t.l, "bloqueio")
+					return {}
+				return _parse_while() if t.v == "while" else _parse_for()
 			"elif", "else":
 				_definir_erro("'" + t.v + "' apareceu sem um if antes. Ele precisa ficar alinhado com o if do mesmo bloco.", t.l, "sintaxe")
 				return {}
 			"def", "return":
-				_definir_erro("'" + t.v + "' sera liberado na Torre das Funcoes.", t.l, "sintaxe")
+				_definir_erro("Ainda nao: '" + t.v + "' sera liberado na Torre das Funcoes.", t.l, "bloqueio")
 				return {}
 	var s = _parse_simples()
 	if _erro != "":
@@ -1125,6 +1128,8 @@ func _falhar_atual():
 func _mensagem_erro() -> String:
 	if _erro_cru:
 		return _erro
+	if _erro_tipo == "bloqueio":
+		return _erro + (" (linha " + str(_erro_linha) + ")" if _multilinha else "")
 	var prefixo = "Erro de sintaxe" if _erro_tipo == "sintaxe" else "Erro"
 	if _multilinha:
 		return prefixo + " na linha " + str(_erro_linha) + ": " + _erro
