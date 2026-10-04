@@ -23,11 +23,13 @@ const SALA_LABIRINTO = 9
 const SALA_ELOS = 10
 const SALA_PONTE = 11
 const SALA_LABIRINTO_CHEFE = 12
+const SALA_TORRE = 13
 # Onde cada bioma comeca. O menu principal so oferece os biomas ja liberados.
 const BIOMAS = [
 	{"nome": "Floresta dos Primeiros Passos", "sala": SALA_FLORESTA},
 	{"nome": "Cavernas Condicionais", "sala": SALA_CAVERNA},
 	{"nome": "Labirinto dos Lacos", "sala": SALA_LABIRINTO},
+	{"nome": "Torre das Funcoes", "sala": SALA_TORRE},
 ]
 const LIMITE_HISTORICO = 5
 const ATRASO_ENTRE_ACOES = 0.22
@@ -41,13 +43,13 @@ var sala_atual: int = 0
 var fase_1_concluida: bool = false
 var fase_2_concluida: bool = false
 var fase_3_concluida: bool = false
+var fase_4_concluida: bool = false
 var trocando_sala: bool = false
 var executando_programa: bool = false
 # Desbloqueios por bioma. Nao voltam a zero entre runs: o roguelike preserva
 # os conceitos ja aprendidos (RF019). progresso grava tudo em disco (RNF005).
 var grimorio_desbloqueado: bool = false
 var lacos_desbloqueados: bool = false
-# def/return: liberados na Torre das Funcoes (ainda nao construida).
 var funcoes_desbloqueadas: bool = false
 var progresso: RefCounted
 var menu: CanvasLayer
@@ -140,6 +142,7 @@ func novo_jogo():
 	progresso.salvar()
 	grimorio_desbloqueado = false
 	lacos_desbloqueados = false
+	funcoes_desbloqueadas = false
 	_atualizar_botao_grimorio()
 	menu.fechar()
 	await _iniciar_run()
@@ -148,6 +151,7 @@ func continuar(bioma: int):
 	progresso.ativo = true
 	grimorio_desbloqueado = progresso.grimorio_desbloqueado
 	lacos_desbloqueados = progresso.lacos_desbloqueados
+	funcoes_desbloqueadas = progresso.funcoes_desbloqueadas
 	_atualizar_botao_grimorio()
 	menu.fechar()
 	await _iniciar_run(clampi(bioma, 0, mini(progresso.bioma_liberado, BIOMAS.size() - 1)))
@@ -398,6 +402,9 @@ func _atualizar_desbloqueios(indice: int):
 	if indice >= SALA_LABIRINTO and not lacos_desbloqueados:
 		lacos_desbloqueados = true
 		_adicionar_saida("[lacos] for e while liberados! Agora voce pode repetir acoes sem reescreve-las.")
+	if indice >= SALA_TORRE and not funcoes_desbloqueadas:
+		funcoes_desbloqueadas = true
+		_adicionar_saida("[funcoes] def e return liberados! Agora voce pode dar nome a um bloco de codigo e usa-lo de novo.")
 	_atualizar_botao_grimorio()
 	_salvar_progresso()
 
@@ -415,6 +422,7 @@ func _salvar_progresso():
 		return
 	progresso.grimorio_desbloqueado = grimorio_desbloqueado
 	progresso.lacos_desbloqueados = lacos_desbloqueados
+	progresso.funcoes_desbloqueadas = funcoes_desbloqueadas
 	# So se chega ao inicio de um bioma concluindo o anterior (RF015): isso o libera.
 	progresso.bioma_liberado = maxi(progresso.bioma_liberado, _bioma_da_sala(sala_atual))
 	progresso.salvar()
@@ -640,13 +648,22 @@ func _texto_livro_magias() -> String:
 		if sala_atual == SALA_PONTE:
 			linhas.append("  passos guarda o caminho da ponte (uma lista de direcoes).")
 		linhas.append("")
+
+	if _em_torre():
+		linhas.append("Fase 4")
+		linhas.append("  def nome():  cria uma funcao: um bloco de codigo com nome.")
+		linhas.append("  nome()  chama a funcao: roda o bloco dela de novo, quantas vezes quiser.")
+		linhas.append("  Sentinelas so sentem golpes de dentro de uma funcao.")
+		linhas.append("")
 	if not tutorial.esta_ativo() and not grimorio_desbloqueado:
 		linhas.append("Grimorio { }")
 		linhas.append("  Bloqueado: liberado nas Cavernas Condicionais, depois do primeiro chefe.")
 		linhas.append("")
 	if grimorio_desbloqueado:
 		linhas.append("Grimorio { }  (Ctrl+G)")
-		if lacos_desbloqueados:
+		if funcoes_desbloqueadas:
+			linhas.append("  Editor de varias linhas: if, for, while e def com blocos recuados.")
+		elif lacos_desbloqueados:
 			linhas.append("  Editor de varias linhas: if, for e while com blocos recuados.")
 		else:
 			linhas.append("  Editor de varias linhas para blocos recuados (if / elif / else).")
@@ -789,6 +806,10 @@ func _iniciar_sala(indice: int):
 	
 	if indice == SALA_LABIRINTO_CHEFE:
 		player.curar_total()
+
+	if indice == SALA_TORRE:
+		fase_4_concluida = false
+		player.curar_total()
 	
 	if indice == SALA_PONTE:
 		interpretador.variaveis["passos"] = mapa.passos_ponte.duplicate()
@@ -818,6 +839,8 @@ func _iniciar_sala(indice: int):
 		_anunciar_chefe_caverna()
 	elif _em_labirinto():
 		_anunciar_sala_labirinto(indice)
+	elif _em_torre():
+		_anunciar_sala_torre(indice)
 	
 	_sincronizar_sinal_oraculo()
 
@@ -871,7 +894,12 @@ func _spawnar_inimigos_sala():
 		gerenciador_inimigos.spawnar_ouroboros(Vector2i(4, 3))
 		return
 	
-	if _em_labirinto():
+	if sala_atual == SALA_TORRE:
+		for pos in mapa.SENTINELAS_POS:
+			gerenciador_inimigos.spawnar_sentinela(pos)
+		return
+	
+	if _em_labirinto() or _em_torre():
 		return
 	
 	var quantidade = min(sala_atual, 4)
@@ -958,6 +986,16 @@ func _on_chegou_na_saida():
 		_concluir_fase_3()
 		return
 	
+	if _em_torre():
+		if gerenciador_inimigos.tem_inimigos_vivos():
+			_adicionar_saida("[fase 4] As Sentinelas ainda selam a saida.")
+			_adicionar_saida("Desfaca todas antes de avancar: golpes de dentro de uma funcao.")
+			_adicionar_saida("------------------------------")
+			return
+		if sala_atual == SALA_TORRE:
+			_concluir_salao_sentinelas()
+			return
+
 	if _em_labirinto() and gerenciador_inimigos.tem_inimigos_vivos():
 		_adicionar_saida("[fase 3] A corrente de Elos ainda bloqueia a passagem.")
 		_adicionar_saida("Parta todos os Elos antes de avancar.")
@@ -1072,7 +1110,33 @@ func _concluir_fase_3():
 	fase_3_concluida = true
 	_adicionar_saida("[fase 3] Labirinto dos Lacos concluido!")
 	_adicionar_saida("Seu while parou na hora certa: o laco infinito do Ouroboros se rompeu.")
-	_adicionar_saida("Fim da versao jogavel desta etapa.")
+	_adicionar_saida("Uma escada em espiral surge no centro do labirinto: a Torre das Funcoes espera.")
+	_adicionar_saida("------------------------------")
+	trocando_sala = true
+	await get_tree().create_timer(1.2).timeout
+	if sala_atual == SALA_LABIRINTO_CHEFE and player.vivo:
+		await _iniciar_sala(SALA_TORRE)
+	else:
+		trocando_sala = false
+
+func _anunciar_sala_torre(indice: int):
+	match indice:
+		SALA_TORRE:
+			_adicionar_saida("[fase 4] Torre das Funcoes: Salao das Sentinelas")
+			_adicionar_saida("Tres Sentinelas Runicas selam a saida. Golpes soltos nao as atingem: elas so reconhecem magias com nome.")
+			_adicionar_saida("def nome(): cria uma funcao, um bloco de codigo com nome. Depois, nome() roda esse bloco quantas vezes voce quiser.")
+			_adicionar_saida("Ex.: no grimorio { }, escreva  def golpe_duplo():  e, recuadas embaixo,  atacar('baixo')  duas vezes. Depois chame golpe_duplo().")
+			_adicionar_saida("Cada Sentinela precisa de 2 golpes vindos de uma funcao.")
+	_adicionar_saida("------------------------------")
+
+# Ultimo andar construido ate agora: os proximos entram aqui.
+func _concluir_salao_sentinelas():
+	if fase_4_concluida:
+		return
+	fase_4_concluida = true
+	_adicionar_saida("[fase 4] Salao das Sentinelas concluido!")
+	_adicionar_saida("Uma funcao escrita uma vez e chamada tres vezes: e para isso que def serve.")
+	_adicionar_saida("Os proximos andares da Torre ainda estao em construcao. Fim da versao jogavel desta etapa.")
 	_adicionar_saida("------------------------------")
 
 func _input(event):
@@ -1338,10 +1402,15 @@ func _deve_processar_turno_inimigos() -> bool:
 		return not fase_2_concluida
 	if _em_labirinto():
 		return not fase_3_concluida
+	if _em_torre():
+		return not fase_4_concluida
 	return false
 
 func _em_labirinto() -> bool:
 	return sala_atual >= SALA_LABIRINTO and sala_atual <= SALA_LABIRINTO_CHEFE
+
+func _em_torre() -> bool:
+	return sala_atual >= SALA_TORRE
 
 func _em_caverna() -> bool:
 	return sala_atual >= SALA_CAVERNA and sala_atual <= SALA_CAVERNA_CHEFE
@@ -1349,6 +1418,8 @@ func _em_caverna() -> bool:
 # Rodadas (recuperacao de mana) valem enquanto a fase atual nao terminou.
 # Antes, qualquer sala depois da floresta ficava sem rodadas.
 func _rodadas_ativas() -> bool:
+	if _em_torre():
+		return not fase_4_concluida
 	if _em_labirinto():
 		return not fase_3_concluida
 	if _em_caverna():
@@ -1431,6 +1502,7 @@ func _iniciar_run(bioma: int = -1):
 	fase_1_concluida = false
 	fase_2_concluida = false
 	fase_3_concluida = false
+	fase_4_concluida = false
 	trocando_sala = false
 	player.resetar()
 	interpretador.variaveis.clear()

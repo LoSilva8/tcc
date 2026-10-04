@@ -30,10 +30,25 @@ const LAB_FLOOR_B = Color(0.1, 0.15, 0.17)
 const LAB_WALL = Color(0.26, 0.21, 0.12)
 const LAB_WALL_DARK = Color(0.11, 0.085, 0.045)
 const LAB_WALL_LIGHT = Color(0.98, 0.78, 0.36, 0.5)
+const TORRE_FLOOR_A = Color(0.09, 0.11, 0.17)
+const TORRE_FLOOR_B = Color(0.105, 0.13, 0.2)
+const TORRE_WALL = Color(0.16, 0.19, 0.3)
+const TORRE_WALL_DARK = Color(0.06, 0.07, 0.12)
+const TORRE_WALL_LIGHT = Color(0.45, 0.9, 1.0, 0.5)
 const SALA_NEBLINA = 9
 const SALA_ELOS = 10
 const SALA_PONTE = 11
 const SALA_OUROBOROS = 12
+const SALA_SENTINELAS = 13
+# Torre, andar 1: tres Sentinelas nas passagens entre os dois corredores.
+const LAYOUT_SENTINELAS = [
+	"###########",
+	"#.........#",
+	"###.#.#.###",
+	"#........E#",
+	"###########",
+]
+const SENTINELAS_POS = [Vector2i(3, 2), Vector2i(5, 2), Vector2i(7, 2)]
 const LAYOUT_OUROBOROS = [
 	"#########",
 	"#.......#",
@@ -180,6 +195,8 @@ func carregar_sala(indice: int):
 			layout = _gerar_ponte()
 		SALA_OUROBOROS:
 			layout = LAYOUT_OUROBOROS
+		SALA_SENTINELAS:
+			layout = LAYOUT_SENTINELAS
 		_:
 			if indice < layouts.size():
 				layout = layouts[indice]
@@ -220,6 +237,9 @@ func _draw():
 	elif _eh_labirinto():
 		draw_rect(sala_rect.grow(18), Color(0.03, 0.04, 0.045))
 		draw_rect(sala_rect.grow(6), Color(0.9, 0.7, 0.3, 0.4), false, 3.0)
+	elif _eh_torre():
+		draw_rect(sala_rect.grow(18), Color(0.025, 0.03, 0.055))
+		draw_rect(sala_rect.grow(6), Color(0.4, 0.8, 1.0, 0.4), false, 3.0)
 	else:
 		draw_rect(sala_rect.grow(18), Color(0.025, 0.028, 0.036))
 		draw_rect(sala_rect.grow(6), Color(0.16, 0.23, 0.25, 0.45), false, 3.0)
@@ -267,6 +287,8 @@ func _desenhar_chao(rect: Rect2, x: int, y: int):
 		base = CAVE_FLOOR_A if (x + y) % 2 == 0 else CAVE_FLOOR_B
 	elif _eh_labirinto():
 		base = LAB_FLOOR_A if (x + y) % 2 == 0 else LAB_FLOOR_B
+	elif _eh_torre():
+		base = TORRE_FLOOR_A if (x + y) % 2 == 0 else TORRE_FLOOR_B
 	draw_rect(rect, base)
 	draw_rect(rect.grow(-8), Color(1, 1, 1, 0.018))
 	if _eh_floresta():
@@ -296,11 +318,33 @@ func _desenhar_parede(rect: Rect2):
 		parede_escura = LAB_WALL_DARK
 		parede = LAB_WALL
 		brilho = LAB_WALL_LIGHT
+	elif _eh_torre():
+		parede_escura = TORRE_WALL_DARK
+		parede = TORRE_WALL
+		brilho = TORRE_WALL_LIGHT
 	draw_rect(rect, parede_escura)
 	draw_rect(rect.grow(-4), parede)
 	draw_line(rect.position + Vector2(7, 8), rect.position + Vector2(rect.size.x - 8, 8), brilho, 2.0)
 	draw_line(rect.position + Vector2(8, rect.size.y - 8), rect.position + Vector2(rect.size.x - 8, rect.size.y - 8), Color(0, 0, 0, 0.35), 2.0)
-	draw_rect(rect.grow(-14), Color(0.11, 0.135, 0.155, 0.42), false, 1.0)
+	if _eh_torre():
+		_desenhar_estante(rect)
+	else:
+		draw_rect(rect.grow(-14), Color(0.11, 0.135, 0.155, 0.42), false, 1.0)
+
+# Paredes da Torre sao estantes da Grande Biblioteca: lombadas de livros.
+func _desenhar_estante(rect: Rect2):
+	var cores = [Color(0.55, 0.28, 0.3), Color(0.25, 0.42, 0.55), Color(0.62, 0.52, 0.3), Color(0.32, 0.5, 0.38)]
+	var semente = int(rect.position.x / TAMANHO_CELULA) * 31 + int(rect.position.y / TAMANHO_CELULA) * 17
+	for prateleira in range(2):
+		var y = rect.position.y + 14 + prateleira * 20
+		var x = rect.position.x + 10
+		var i = 0
+		while x < rect.position.x + rect.size.x - 12:
+			var largura = 4 + _tile_hash(semente, i, prateleira) % 4
+			draw_rect(Rect2(Vector2(x, y), Vector2(largura, 15)), cores[_tile_hash(semente, i, 5 + prateleira) % cores.size()])
+			x += largura + 1
+			i += 1
+		draw_line(Vector2(rect.position.x + 8, y + 16), Vector2(rect.position.x + rect.size.x - 8, y + 16), Color(0.05, 0.05, 0.08), 2.0)
 
 func _desenhar_saida(rect: Rect2):
 	var center = rect.position + rect.size / 2
@@ -412,6 +456,9 @@ func _eh_caverna() -> bool:
 
 func _eh_labirinto() -> bool:
 	return sala_atual >= SALA_NEBLINA and sala_atual <= SALA_OUROBOROS
+
+func _eh_torre() -> bool:
+	return sala_atual >= SALA_SENTINELAS
 
 func eh_ponte(pos: Vector2i) -> bool:
 	return sala_atual == SALA_PONTE and ponte.has(pos)

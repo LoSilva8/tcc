@@ -65,8 +65,8 @@ func _executar(comando: String) -> String:
 	match cmd:
 		"ajuda":
 			return "Comandos:\n" + \
-				"  sala <n>          - vai direto para a sala n (0-12; 5-8 cavernas, 9-12 labirinto)\n" + \
-				"  spawn <tipo> <x> <y> - spawna inimigo (normal/escudo/chefe/elemental/oraculo/elo/ouroboros)\n" + \
+				"  sala <n>          - vai direto para a sala n (0-13; 5-8 cavernas, 9-12 labirinto, 13 torre)\n" + \
+				"  spawn <tipo> <x> <y> - spawna inimigo (normal/escudo/chefe/elemental/oraculo/elo/ouroboros/sentinela)\n" + \
 				"  tutorial_skip      - pula o tutorial\n" + \
 				"  hp <n>             - define HP do jogador\n" + \
 				"  matar_tudo         - remove todos os inimigos da sala\n" + \
@@ -118,8 +118,11 @@ func _executar(comando: String) -> String:
 				"ouroboros":
 					main_ref.gerenciador_inimigos.spawnar_ouroboros(pos)
 					return "Ouroboros spawnado em " + str(pos)
+				"sentinela":
+					main_ref.gerenciador_inimigos.spawnar_sentinela(pos)
+					return "Sentinela spawnada em " + str(pos)
 				_:
-					return "Tipo invalido. Use: normal, escudo, chefe, elemental, oraculo, elo ou ouroboros"
+					return "Tipo invalido. Use: normal, escudo, chefe, elemental, oraculo, elo, ouroboros ou sentinela"
 		
 		"tutorial_skip":
 			if not main_ref.tutorial.esta_ativo():

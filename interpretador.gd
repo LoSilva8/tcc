@@ -97,6 +97,9 @@ func dentro_de_laco() -> bool:
 func dentro_de_while() -> bool:
 	return _profundidade_while > 0
 
+func dentro_de_funcao() -> bool:
+	return not _locais.is_empty()
+
 # Usado pelos desafios (bau/porta, comporta) para testar uma condicao isolada.
 func _avaliar_condicao(condicao: String) -> bool:
 	_erro = ""

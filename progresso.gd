@@ -12,9 +12,10 @@ var caminho = CAMINHO_PADRAO
 var ativo = false
 
 var tutorial_concluido = false
-var bioma_liberado = 0  # indice em main.BIOMAS: 0 Floresta, 1 Cavernas, 2 Labirinto
+var bioma_liberado = 0  # indice em main.BIOMAS: 0 Floresta, 1 Cavernas, 2 Labirinto, 3 Torre
 var grimorio_desbloqueado = false
 var lacos_desbloqueados = false
+var funcoes_desbloqueadas = false
 
 func tem_progresso() -> bool:
 	return tutorial_concluido
@@ -24,6 +25,7 @@ func zerar():
 	bioma_liberado = 0
 	grimorio_desbloqueado = false
 	lacos_desbloqueados = false
+	funcoes_desbloqueadas = false
 
 # Arquivo ausente ou corrompido vale como jogo novo.
 func carregar() -> bool:
@@ -35,6 +37,7 @@ func carregar() -> bool:
 	bioma_liberado = maxi(_ler(config, "bioma_liberado", 0), 0)
 	grimorio_desbloqueado = _ler(config, "grimorio_desbloqueado", false)
 	lacos_desbloqueados = _ler(config, "lacos_desbloqueados", false)
+	funcoes_desbloqueadas = _ler(config, "funcoes_desbloqueadas", false)
 	return true
 
 func salvar() -> bool:
@@ -45,6 +48,7 @@ func salvar() -> bool:
 	config.set_value(SECAO, "bioma_liberado", bioma_liberado)
 	config.set_value(SECAO, "grimorio_desbloqueado", grimorio_desbloqueado)
 	config.set_value(SECAO, "lacos_desbloqueados", lacos_desbloqueados)
+	config.set_value(SECAO, "funcoes_desbloqueadas", funcoes_desbloqueadas)
 	return config.save(caminho) == OK
 
 func _ler(config: ConfigFile, chave: String, padrao):

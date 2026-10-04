@@ -8,6 +8,7 @@ const ChefeCavernaCena = preload("res://chefe_caverna.tscn")
 const BossSaidaCena = preload("res://boss_saida.tscn")
 const EloCena = preload("res://elo.tscn")
 const OuroborosCena = preload("res://ouroboros.tscn")
+const SentinelaCena = preload("res://sentinela.tscn")
 const TAMANHO_CELULA = 64
 const PASSOS = [
 	Vector2i(1, 0),
@@ -100,6 +101,16 @@ func spawnar_ouroboros(pos: Vector2i):
 	serpente.chefe_derrotado.connect(func(): emit_signal("chefe_derrotado"))
 	inimigos[pos] = serpente
 
+func spawnar_sentinela(pos: Vector2i, golpes: int = 2):
+	if pos in inimigos:
+		return
+	if mapa and mapa.eh_parede(pos):
+		return
+	var sentinela = SentinelaCena.instantiate()
+	add_child(sentinela)
+	sentinela.inicializar(pos, golpes)
+	inimigos[pos] = sentinela
+
 func chefe_labirinto_vivo() -> bool:
 	for pos in inimigos:
 		var i = inimigos[pos]
@@ -122,6 +133,9 @@ func _laco_ativo(so_while: bool) -> bool:
 	if player == null or player.interpretador == null:
 		return false
 	return player.interpretador.dentro_de_while() if so_while else player.interpretador.dentro_de_laco()
+
+func _funcao_ativa() -> bool:
+	return player != null and player.interpretador != null and player.interpretador.dentro_de_funcao()
 
 func spawnar_boss_saida(pos: Vector2i, area_inicio: Vector2i, area_tamanho: Vector2i):
 	if pos in inimigos:
@@ -187,6 +201,8 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 			resultado = inimigo.receber_dano(dano, _laco_ativo(false))
 		elif inimigo.get_script() == preload("res://ouroboros.gd"):
 			resultado = inimigo.receber_dano(dano, usando_variavel, _laco_ativo(true))
+		elif inimigo.get_script() == preload("res://sentinela.gd"):
+			resultado = inimigo.receber_dano(dano, _funcao_ativa())
 		elif inimigo.get_script() == preload("res://inimigo_escudo.gd"):
 			resultado = inimigo.receber_dano(dano, usando_variavel)
 		elif inimigo.get_script() == preload("res://inimigo_elemental.gd"):
@@ -288,6 +304,8 @@ func _nome_inimigo(inimigo: Node) -> String:
 		return "Elo"
 	if inimigo.get_script() == preload("res://ouroboros.gd"):
 		return "Ouroboros"
+	if inimigo.get_script() == preload("res://sentinela.gd"):
+		return "Sentinela Runica"
 	if inimigo.has_method("eh_boss_saida") and inimigo.eh_boss_saida():
 		return "Guardiao da Saida"
 	return "Sentinela da Floresta"
