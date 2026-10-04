@@ -66,6 +66,8 @@ var _cancelar: bool = false
 var _multilinha: bool = false
 # Pilha de escopos: um dicionario de variaveis locais por chamada de funcao em andamento.
 var _locais: Array = []
+# Funcoes em execucao, na mesma ordem de _locais (a ultima e a que esta rodando).
+var _chamadas: Array = []
 var _retorno = null
 # Contadores do parser: break/continue so dentro de laco, return so dentro de def,
 # def so fora de blocos.
@@ -100,6 +102,10 @@ func dentro_de_while() -> bool:
 func dentro_de_funcao() -> bool:
 	return not _locais.is_empty()
 
+# A funcao que esta rodando agora (a mais interna) recebe parametros?
+func funcao_com_parametros() -> bool:
+	return not _chamadas.is_empty() and not _chamadas.back().params.is_empty()
+
 # Usado pelos desafios (bau/porta, comporta) para testar uma condicao isolada.
 func _avaliar_condicao(condicao: String) -> bool:
 	_erro = ""
@@ -131,6 +137,7 @@ func _preparar_execucao():
 	_profundidade_while = 0
 	_cancelar = false
 	_locais = []
+	_chamadas = []
 	_retorno = null
 
 func _compilar(codigo: String) -> Array:
@@ -978,7 +985,9 @@ func _chamar_do_jogador(nome: String, valores: Array, linha: int):
 	for i in range(valores.size()):
 		escopo[f.params[i]] = valores[i]
 	_locais.append(escopo)
+	_chamadas.append(f)
 	await _exec_bloco(f.corpo)
+	_chamadas.pop_back()
 	_locais.pop_back()
 	if _sinal != "return":
 		return null

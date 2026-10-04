@@ -25,7 +25,7 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 - `interpretador.gd`: subconjunto real de Python escrito em GDScript. Texto → tokens (com INDENT/DEDENT) → árvore → execução como corrotina. Cada ação (mover, atacar, fireball) gasta 1 turno. Funções do jogador (`def`, parâmetros, `return`, escopo local) podem agir, por isso rodam antes de avaliar a expressão (`_resolver`). O player lê variáveis por `tem_variavel`/`ler_variavel` para enxergar as locais. `funcoes_liberadas`/`lacos_liberados` vêm do main (`funcoes_desbloqueadas` fica false até existir a Torre).
 - `player.gd`: movimento em grid, ataque, fireball (custo 2 + poder, recupera 1 MP por rodada), XP, nível e upgrades.
 - `mapa.gd`: layout das salas por índice, geração procedural, desenho por bioma.
-- `gerenciador_inimigos.gd`: spawn e turno dos inimigos (normal, escudo, elemental, chefes, Elo, Ouroboros, Sentinela). Cada bioma tem criaturas que so caem com o conceito novo: Elos so com golpes dentro de laco, Ouroboros so dentro de while, Sentinelas so com golpes de dentro de uma funcao.
+- `gerenciador_inimigos.gd`: spawn e turno dos inimigos (normal, escudo, elemental, chefes, Elo, Ouroboros, Sentinela). Cada bioma tem criaturas que so caem com o conceito novo: Elos so com golpes dentro de laco, Ouroboros so dentro de while, Sentinelas so com golpes de dentro de uma funcao, Sentinelas Gemeas so de funcao com parametros.
 - Desafios: `tutorial.gd` (Floresta), `desafio_bau_porta.gd` (baú com variável, porta com if), `desafio_comporta.gd` (if/elif/else nas Cavernas).
 - Feedback de erro: `feedback_ia.gd` (Groq, modelo `openai/gpt-oss-20b`; chave em `GROQ_API_KEY` ou `user://feedback_ia.cfg`) e `mentor_ia.gd` (feedback local, sem rede).
 - Biomas: Floresta dos Primeiros Passos → Cavernas Condicionais → Labirinto dos Laços → Torre das Funções.
@@ -35,7 +35,7 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 | Floresta dos Primeiros Passos | 1 (0 = tutorial; 2–4 são salas antigas, só via debug) | sintaxe, variáveis | pronto |
 | Cavernas Condicionais | 5–8 | if/elif/else; chefe Oráculo Bifurcado | pronto |
 | Labirinto dos Laços | 9–12 | for/while, listas; chefe Ouroboros | pronto |
-| Torre das Funções | 13 (Salão das Sentinelas) | def, parâmetros, retorno; chefe Arquimago da Corrupção | andar 1 pronto |
+| Torre das Funções | 13 (Salão das Sentinelas), 14 (Câmara dos Parâmetros) | def, parâmetros, retorno; chefe Arquimago da Corrupção | andares 1 e 2 prontos |
 
 ## Convenções
 - Código, identificadores, comentários e textos do jogo em português, em geral sem acento.
@@ -47,6 +47,6 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 Pronto: Floresta com tutorial, Cavernas, Labirinto, grimório multi-linha, interpretador com blocos, fireball/mana, XP e nível, feedback por IA, syntax highlighting, progressão por bioma (grimório liberado a partir das Cavernas, laços a partir do Labirinto), menu principal e progresso salvo em disco. As 12 suítes de teste passam.
 
 Falta, comparando com o documento do TCC:
-- Torre das Funções (RF014, Tabela 11): andar 1 (Salão das Sentinelas, sala 13) pronto, com `def` liberado e salvo no progresso. Faltam o andar 2 (parâmetros), o andar 3 (`return`) e o Arquimago da Corrupção. Hoje a saída da sala 13 encerra a versão jogável (`_concluir_salao_sentinelas`).
+- Torre das Funções (RF014, Tabela 11): andares 1 (Sentinelas, sala 13) e 2 (Parâmetros, sala 14) prontos, com `def` liberado e salvo no progresso. Faltam o andar 3 (`return`) e o Arquimago da Corrupção. Hoje a saída da sala 14 encerra a versão jogável (`_concluir_ultimo_andar`).
 - RF023 diz `atacar_com(Elemento, 'direção')`, mas o código trocou por `fireball(poder, 'direcao')`. Atualizar o documento ou o código.
 - Preparar a validação do capítulo 4 (pré-teste, pós-teste, questionário MEEGA+, ficha de observação).

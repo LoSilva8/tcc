@@ -24,6 +24,7 @@ const SALA_ELOS = 10
 const SALA_PONTE = 11
 const SALA_LABIRINTO_CHEFE = 12
 const SALA_TORRE = 13
+const SALA_PARAMETROS = 14
 # Onde cada bioma comeca. O menu principal so oferece os biomas ja liberados.
 const BIOMAS = [
 	{"nome": "Floresta dos Primeiros Passos", "sala": SALA_FLORESTA},
@@ -654,6 +655,9 @@ func _texto_livro_magias() -> String:
 		linhas.append("  def nome():  cria uma funcao: um bloco de codigo com nome.")
 		linhas.append("  nome()  chama a funcao: roda o bloco dela de novo, quantas vezes quiser.")
 		linhas.append("  Sentinelas so sentem golpes de dentro de uma funcao.")
+		if sala_atual >= SALA_PARAMETROS:
+			linhas.append("  def nome(a, b):  parametros recebem os valores da chamada: nome('cima', 2).")
+			linhas.append("  Sentinelas Gemeas so sentem funcoes com parametros.")
 		linhas.append("")
 	if not tutorial.esta_ativo() and not grimorio_desbloqueado:
 		linhas.append("Grimorio { }")
@@ -894,9 +898,9 @@ func _spawnar_inimigos_sala():
 		gerenciador_inimigos.spawnar_ouroboros(Vector2i(4, 3))
 		return
 	
-	if sala_atual == SALA_TORRE:
-		for pos in mapa.SENTINELAS_POS:
-			gerenciador_inimigos.spawnar_sentinela(pos)
+	if _em_torre():
+		for pos in mapa.sentinelas:
+			gerenciador_inimigos.spawnar_sentinela(pos, mapa.sentinelas[pos], sala_atual == SALA_PARAMETROS)
 		return
 	
 	if _em_labirinto() or _em_torre():
@@ -993,7 +997,9 @@ func _on_chegou_na_saida():
 			_adicionar_saida("------------------------------")
 			return
 		if sala_atual == SALA_TORRE:
-			_concluir_salao_sentinelas()
+			_adicionar_saida("[fase 4] Salao das Sentinelas concluido! Uma funcao escrita uma vez e chamada tres vezes: e para isso que def serve.")
+		if sala_atual == SALA_PARAMETROS:
+			_concluir_ultimo_andar()
 			return
 
 	if _em_labirinto() and gerenciador_inimigos.tem_inimigos_vivos():
@@ -1127,15 +1133,21 @@ func _anunciar_sala_torre(indice: int):
 			_adicionar_saida("def nome(): cria uma funcao, um bloco de codigo com nome. Depois, nome() roda esse bloco quantas vezes voce quiser.")
 			_adicionar_saida("Ex.: no grimorio { }, escreva  def golpe_duplo():  e, recuadas embaixo,  atacar('baixo')  duas vezes. Depois chame golpe_duplo().")
 			_adicionar_saida("Cada Sentinela precisa de 2 golpes vindos de uma funcao.")
+		SALA_PARAMETROS:
+			_adicionar_saida("[fase 4] Torre das Funcoes: Camara dos Parametros")
+			_adicionar_saida("Quatro Sentinelas Gemeas cercam voce, cada uma com um numero de runas (veja acima delas).")
+			_adicionar_saida("Elas so reconhecem magias que recebem valores: funcoes com parametros.")
+			_adicionar_saida("def golpear(direcao, vezes): cria uma funcao com dois parametros. Ao chamar golpear('cima', 2), direcao vale 'cima' e vezes vale 2.")
+			_adicionar_saida("As runas mudam a cada visita: uma so funcao com parametros serve para todas as Sentinelas.")
 	_adicionar_saida("------------------------------")
 
 # Ultimo andar construido ate agora: os proximos entram aqui.
-func _concluir_salao_sentinelas():
+func _concluir_ultimo_andar():
 	if fase_4_concluida:
 		return
 	fase_4_concluida = true
-	_adicionar_saida("[fase 4] Salao das Sentinelas concluido!")
-	_adicionar_saida("Uma funcao escrita uma vez e chamada tres vezes: e para isso que def serve.")
+	_adicionar_saida("[fase 4] Camara dos Parametros concluida!")
+	_adicionar_saida("Uma funcao, varios usos: os parametros mudam o que ela faz a cada chamada.")
 	_adicionar_saida("Os proximos andares da Torre ainda estao em construcao. Fim da versao jogavel desta etapa.")
 	_adicionar_saida("------------------------------")
 

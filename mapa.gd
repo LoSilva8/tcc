@@ -49,6 +49,16 @@ const LAYOUT_SENTINELAS = [
 	"###########",
 ]
 const SENTINELAS_POS = [Vector2i(3, 2), Vector2i(5, 2), Vector2i(7, 2)]
+const SALA_PARAMETROS = 14
+# Torre, andar 2: sala em cruz, o mago no centro e uma Sentinela em cada direcao.
+const LAYOUT_PARAMETROS = [
+	"###########",
+	"#####.#####",
+	"#........E#",
+	"#####.#####",
+	"###########",
+]
+const PARAMETROS_CENTRO = Vector2i(5, 2)
 const LAYOUT_OUROBOROS = [
 	"#########",
 	"#.......#",
@@ -72,6 +82,8 @@ var neblina: bool = false
 var ponte: Dictionary = {}
 var passos_ponte: Array = []
 var elos_pos: Array = []
+# Torre: posicao -> runas (golpes) de cada Sentinela da sala.
+var sentinelas: Dictionary = {}
 
 signal jogador_na_saida
 
@@ -183,6 +195,7 @@ func carregar_sala(indice: int):
 	ponte.clear()
 	passos_ponte = []
 	elos_pos = []
+	sentinelas = {}
 
 	var layout = []
 	match indice:
@@ -197,6 +210,12 @@ func carregar_sala(indice: int):
 			layout = LAYOUT_OUROBOROS
 		SALA_SENTINELAS:
 			layout = LAYOUT_SENTINELAS
+			for pos in SENTINELAS_POS:
+				sentinelas[pos] = 2
+		SALA_PARAMETROS:
+			layout = LAYOUT_PARAMETROS
+			inicio_pos = PARAMETROS_CENTRO
+			_sortear_runas_parametros()
 		_:
 			if indice < layouts.size():
 				layout = layouts[indice]
@@ -459,6 +478,15 @@ func _eh_labirinto() -> bool:
 
 func _eh_torre() -> bool:
 	return sala_atual >= SALA_SENTINELAS
+
+# Runas de 1 a 3 por Sentinela, sorteadas a cada visita e nunca todas iguais:
+# uma funcao fixa nao serve, so uma com parametros.
+func _sortear_runas_parametros():
+	var runas = [1, 2, 3, randi_range(1, 3)]
+	runas.shuffle()
+	var vizinhas = [Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]
+	for i in range(vizinhas.size()):
+		sentinelas[PARAMETROS_CENTRO + vizinhas[i]] = runas[i]
 
 func eh_ponte(pos: Vector2i) -> bool:
 	return sala_atual == SALA_PONTE and ponte.has(pos)

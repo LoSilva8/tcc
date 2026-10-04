@@ -38,6 +38,7 @@ func _testar():
 
 	await _testar_transicao_labirinto_torre()
 	await _testar_sentinelas()
+	await _testar_parametros()
 	await _testar_continuar_na_torre()
 
 	DirAccess.remove_absolute(ARQUIVO)
@@ -117,7 +118,47 @@ func _testar_sentinelas():
 	await jogo._executar_programa(ate_a_proxima)
 	verificar(gi.quantidade_inimigos_vivos() == 0, "E a terceira.")
 	await jogo._executar_programa("mover('baixo')\nmover('baixo')\nmover('direita')\nmover('direita')")
-	verificar(jogo.fase_4_concluida and "Salao das Sentinelas concluido" in jogo.output_label.text, "Com as Sentinelas desfeitas, a saida conclui o andar.")
+	verificar("Salao das Sentinelas concluido" in jogo.output_label.text, "Com as Sentinelas desfeitas, a saida conclui o andar 1.")
+	verificar(await _esperar_sala(jogo.SALA_PARAMETROS), "O andar 1 leva ao andar 2 (sala 14).")
+
+# ─── Sala 14: Sentinelas Gemeas so sentem funcoes com parametros ────
+
+func _testar_parametros():
+	var gi = jogo.gerenciador_inimigos
+	var p = jogo.player
+	var mapa = jogo.mapa
+	verificar(p.grid_pos == Vector2i(5, 2), "Mago comeca no centro da Camara dos Parametros.")
+	verificar(gi.quantidade_inimigos_vivos() == 4, "Quatro Sentinelas Gemeas.")
+	var runas = mapa.sentinelas.values()
+	verificar(runas.min() >= 1 and runas.max() <= 3 and runas.has(1) and runas.has(2) and runas.has(3), "Runas de 1 a 3, nunca todas iguais.")
+	var texto = jogo.output_label.text
+	verificar("Camara dos Parametros" in texto and "golpear(direcao, vezes)" in texto, "Sala 14 apresenta parametros (RF016).")
+	verificar("Sentinelas Gemeas" in jogo._texto_livro_magias(), "Livro explica as Gemeas.")
+	var sorteios = {}
+	for i in range(12):
+		await jogo._on_comando_enviado("reiniciar_sala()")
+		sorteios[str(mapa.sentinelas)] = true
+	verificar(sorteios.size() >= 2, "As runas mudam a cada visita (uma funcao fixa nao serve).")
+	await _resolver_runa()
+
+	var cima = gi.inimigos.get(Vector2i(5, 1))
+	var antes = cima.golpes_restantes
+	var saida = await _saida_de(func(): await jogo._executar_programa("def golpe_cima():\n    atacar('cima')\ngolpe_cima()"))
+	verificar("ignora funcoes sem parametros" in saida and cima.golpes_restantes == antes, "Funcao sem parametros nao atinge a Sentinela Gemea.")
+
+	await jogo._executar_programa("def golpear(direcao, vezes):\n    for i in range(vezes):\n        atacar(direcao)")
+	var direcoes = {"cima": Vector2i(5, 1), "esquerda": Vector2i(4, 2), "direita": Vector2i(6, 2), "baixo": Vector2i(5, 3)}
+	# Subir de nivel pausa o programa: como o aluno, escolhe a runa e chama de novo.
+	for tentativa in range(4):
+		for d in direcoes:
+			await _resolver_runa()
+			var sentinela = gi.inimigos.get(direcoes[d])
+			if sentinela != null and sentinela.vivo:
+				await jogo._on_comando_enviado("golpear('" + d + "', " + str(sentinela.golpes_restantes) + ")")
+	verificar(gi.quantidade_inimigos_vivos() == 0, "Uma funcao com parametros desfaz todas as Gemeas.")
+	await _resolver_runa()
+	await jogo._executar_programa("for i in range(4):\n    mover('direita')")
+	verificar(jogo.fase_4_concluida and "Camara dos Parametros concluida" in jogo.output_label.text, "A saida conclui o andar 2.")
 
 # ─── Continuar direto na Torre ──────────────────────────────────────
 

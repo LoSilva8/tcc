@@ -101,14 +101,16 @@ func spawnar_ouroboros(pos: Vector2i):
 	serpente.chefe_derrotado.connect(func(): emit_signal("chefe_derrotado"))
 	inimigos[pos] = serpente
 
-func spawnar_sentinela(pos: Vector2i, golpes: int = 2):
+func spawnar_sentinela(pos: Vector2i, golpes: int = 2, exige_parametro: bool = false):
 	if pos in inimigos:
 		return
 	if mapa and mapa.eh_parede(pos):
 		return
 	var sentinela = SentinelaCena.instantiate()
 	add_child(sentinela)
-	sentinela.inicializar(pos, golpes)
+	sentinela.inicializar(pos, golpes, exige_parametro)
+	if mapa and not mapa.eh_parede(pos + Vector2i(0, -1)) and mapa.eh_parede(pos + Vector2i(0, 1)):
+		sentinela.rotulo_embaixo()
 	inimigos[pos] = sentinela
 
 func chefe_labirinto_vivo() -> bool:
@@ -202,7 +204,8 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 		elif inimigo.get_script() == preload("res://ouroboros.gd"):
 			resultado = inimigo.receber_dano(dano, usando_variavel, _laco_ativo(true))
 		elif inimigo.get_script() == preload("res://sentinela.gd"):
-			resultado = inimigo.receber_dano(dano, _funcao_ativa())
+			var interpretador = player.interpretador if player else null
+			resultado = inimigo.receber_dano(dano, _funcao_ativa(), interpretador != null and interpretador.funcao_com_parametros())
 		elif inimigo.get_script() == preload("res://inimigo_escudo.gd"):
 			resultado = inimigo.receber_dano(dano, usando_variavel)
 		elif inimigo.get_script() == preload("res://inimigo_elemental.gd"):
@@ -305,7 +308,7 @@ func _nome_inimigo(inimigo: Node) -> String:
 	if inimigo.get_script() == preload("res://ouroboros.gd"):
 		return "Ouroboros"
 	if inimigo.get_script() == preload("res://sentinela.gd"):
-		return "Sentinela Runica"
+		return "Sentinela Gemea" if inimigo.exige_parametro else "Sentinela Runica"
 	if inimigo.has_method("eh_boss_saida") and inimigo.eh_boss_saida():
 		return "Guardiao da Saida"
 	return "Sentinela da Floresta"
