@@ -212,10 +212,10 @@ func curar_total():
 	emit_signal("mana_alterada", mana, mana_max)
 
 func _fireball_com_variavel(nome_variavel: String, direcao_arg: String) -> String:
-	if interpretador == null or not (nome_variavel in interpretador.variaveis):
+	if interpretador == null or not interpretador.tem_variavel(nome_variavel):
 		return "A variavel '" + nome_variavel + "' nao foi definida.\nCrie-a antes: " + nome_variavel + " = valor"
 	
-	var poder = interpretador.variaveis[nome_variavel]
+	var poder = interpretador.ler_variavel(nome_variavel)
 	if not (typeof(poder) == TYPE_INT or typeof(poder) == TYPE_FLOAT):
 		return "Fireball precisa de uma variavel numerica.\nExemplo: poder = 3"
 	var custo_mana = _calcular_custo_fireball(poder)
@@ -273,8 +273,8 @@ func recuperar_mana_rodada() -> String:
 func _resolver_direcao_fireball(direcao_arg: String) -> String:
 	if direcao_arg in ["direita", "esquerda", "cima", "baixo"]:
 		return direcao_arg
-	if interpretador and direcao_arg in interpretador.variaveis:
-		return str(interpretador.variaveis[direcao_arg])
+	if interpretador and interpretador.tem_variavel(direcao_arg):
+		return str(interpretador.ler_variavel(direcao_arg))
 	return direcao_arg
 
 func _vetor_direcao(direcao: String) -> Vector2i:

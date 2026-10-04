@@ -22,7 +22,7 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 - `main.gd`: orquestra as salas (`_iniciar_sala`), HUD, terminal de uma linha, grimório (CodeEdit multi-linha, Ctrl+Enter executa), livro de magias, desbloqueios por bioma e `_iniciar_run(bioma)` (-1 = pelo tutorial).
 - `menu_principal.gd`: tela inicial com Novo jogo e Continuar a partir de um bioma liberado. `reiniciar()` volta para ela.
 - `progresso.gd`: progresso permanente em `user://progresso.cfg` (tutorial feito, bioma liberado, grimório, laços). Só grava depois que a partida começa pelo menu, então os testes nunca tocam no save real. XP e nível não são salvos (zeram a cada run).
-- `interpretador.gd`: subconjunto real de Python escrito em GDScript. Texto → tokens (com INDENT/DEDENT) → árvore → execução como corrotina. Cada ação (mover, atacar, fireball) gasta 1 turno. `def` fica bloqueado até a Torre das Funções.
+- `interpretador.gd`: subconjunto real de Python escrito em GDScript. Texto → tokens (com INDENT/DEDENT) → árvore → execução como corrotina. Cada ação (mover, atacar, fireball) gasta 1 turno. Funções do jogador (`def`, parâmetros, `return`, escopo local) podem agir, por isso rodam antes de avaliar a expressão (`_resolver`). O player lê variáveis por `tem_variavel`/`ler_variavel` para enxergar as locais. `funcoes_liberadas`/`lacos_liberados` vêm do main (`funcoes_desbloqueadas` fica false até existir a Torre).
 - `player.gd`: movimento em grid, ataque, fireball (custo 2 + poder, recupera 1 MP por rodada), XP, nível e upgrades.
 - `mapa.gd`: layout das salas por índice, geração procedural, desenho por bioma.
 - `gerenciador_inimigos.gd`: spawn e turno dos inimigos (normal, escudo, elemental, chefes, Elo, Ouroboros).
@@ -44,9 +44,9 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 - Ao implementar um requisito do TCC, citar o ID no comentário (ex.: `RF019`).
 
 ## Estado atual (2026-10-04)
-Pronto: Floresta com tutorial, Cavernas, Labirinto, grimório multi-linha, interpretador com blocos, fireball/mana, XP e nível, feedback por IA, syntax highlighting, progressão por bioma (grimório liberado a partir das Cavernas, laços a partir do Labirinto), menu principal e progresso salvo em disco. As 10 suítes de teste passam.
+Pronto: Floresta com tutorial, Cavernas, Labirinto, grimório multi-linha, interpretador com blocos, fireball/mana, XP e nível, feedback por IA, syntax highlighting, progressão por bioma (grimório liberado a partir das Cavernas, laços a partir do Labirinto), menu principal e progresso salvo em disco. As 11 suítes de teste passam.
 
 Falta, comparando com o documento do TCC:
-- Torre das Funções e o chefe final Arquimago da Corrupção (RF014, Tabela 11).
+- Torre das Funções e o chefe final Arquimago da Corrupção (RF014, Tabela 11). Etapa 1 pronta: o interpretador já suporta funções (`tests/funcoes_test.gd`). Faltam as salas (etapa 2) e o chefe (etapa 3), que devem ligar `funcoes_desbloqueadas` e salvá-lo no progresso.
 - RF023 diz `atacar_com(Elemento, 'direção')`, mas o código trocou por `fireball(poder, 'direcao')`. Atualizar o documento ou o código.
 - Preparar a validação do capítulo 4 (pré-teste, pós-teste, questionário MEEGA+, ficha de observação).

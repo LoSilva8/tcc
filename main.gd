@@ -47,6 +47,8 @@ var executando_programa: bool = false
 # os conceitos ja aprendidos (RF019). progresso grava tudo em disco (RNF005).
 var grimorio_desbloqueado: bool = false
 var lacos_desbloqueados: bool = false
+# def/return: liberados na Torre das Funcoes (ainda nao construida).
+var funcoes_desbloqueadas: bool = false
 var progresso: RefCounted
 var menu: CanvasLayer
 var _sala_do_programa: int = -1
@@ -1195,6 +1197,7 @@ func _executar_programa(codigo: String) -> String:
 	_sala_do_programa = sala_atual
 	_programa_no_tutorial = tutorial.esta_ativo()
 	interpretador.lacos_liberados = lacos_desbloqueados
+	interpretador.funcoes_liberadas = funcoes_desbloqueadas
 	_eco_programa(codigo)
 	if _programa_do_grimorio:
 		grimorio_executar.disabled = true
@@ -1431,6 +1434,7 @@ func _iniciar_run(bioma: int = -1):
 	trocando_sala = false
 	player.resetar()
 	interpretador.variaveis.clear()
+	interpretador.funcoes.clear()
 	output_label.text = ""
 	await get_tree().process_frame
 	levelup_panel.visible = false

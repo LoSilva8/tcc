@@ -7,6 +7,8 @@ extends Node
 # jogo e, entre duas acoes, o interpretador espera `atraso_entre_acoes` segundos
 # para o jogador ver o laco acontecendo. Programas com uma acao so terminam no
 # mesmo frame (o `await` nao pausa), entao comandos simples continuam instantaneos.
+# Funcoes do jogador (def) tambem podem agir, entao rodam antes de avaliar cada
+# expressao (ver _resolver), cada chamada com seu escopo local (ver _locais).
 
 signal linha_executando(linha: int)
 
@@ -25,8 +27,16 @@ const MAX_ACOES = 80
 const MAX_PASSOS = 3000
 const MAX_FALHAS_SEGUIDAS = 3
 const MAX_RANGE = 100
+const MAX_CHAMADAS_ANINHADAS = 30
+# Nomes que ja sao do jogo: o aluno nao pode criar funcoes com eles.
+const NOMES_DO_JOGO = ["mover", "atacar", "fireball", "escolher", "print", "range", "len", "str",
+	"int", "abs", "min", "max", "caminho_livre", "inimigo_a_frente", "inimigos_restantes",
+	"minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta", "reiniciar",
+	"reiniciar_sala", "desafio", "atacar_com"]
 
 var variaveis: Dictionary = {}
+# Funcoes criadas com def. Como as variaveis, continuam valendo nos proximos comandos.
+var funcoes: Dictionary = {}
 var player: Node = null
 var ultimo_encadeado: bool = false
 var atraso_entre_acoes: float = 0.0
@@ -35,6 +45,8 @@ var ao_escrever: Callable
 var executando: bool = false
 # Progressao por bioma: o main desliga os lacos ate o Labirinto dos Lacos.
 var lacos_liberados: bool = true
+# Idem para def/return, liberados na Torre das Funcoes.
+var funcoes_liberadas: bool = true
 
 var _tokens: Array = []
 var _pos: int = 0
@@ -52,6 +64,14 @@ var _profundidade_laco: int = 0
 var _profundidade_while: int = 0
 var _cancelar: bool = false
 var _multilinha: bool = false
+# Pilha de escopos: um dicionario de variaveis locais por chamada de funcao em andamento.
+var _locais: Array = []
+var _retorno = null
+# Contadores do parser: break/continue so dentro de laco, return so dentro de def,
+# def so fora de blocos.
+var _parse_lacos: int = 0
+var _parse_funcoes: int = 0
+var _parse_blocos: int = 0
 
 # ─── API publica ────────────────────────────────────────────────────
 
@@ -107,12 +127,17 @@ func _preparar_execucao():
 	_profundidade_laco = 0
 	_profundidade_while = 0
 	_cancelar = false
+	_locais = []
+	_retorno = null
 
 func _compilar(codigo: String) -> Array:
 	_tokens = _tokenizar(codigo)
 	if _erro != "":
 		return []
 	_pos = 0
+	_parse_lacos = 0
+	_parse_funcoes = 0
+	_parse_blocos = 0
 	var programa: Array = []
 	while _ver().t != "FIM" and _erro == "":
 		var s = _parse_stmt()
@@ -292,9 +317,8 @@ func _parse_stmt() -> Dictionary:
 			"elif", "else":
 				_definir_erro("'" + t.v + "' apareceu sem um if antes. Ele precisa ficar alinhado com o if do mesmo bloco.", t.l, "sintaxe")
 				return {}
-			"def", "return":
-				_definir_erro("Ainda nao: '" + t.v + "' sera liberado na Torre das Funcoes.", t.l, "bloqueio")
-				return {}
+			"def":
+				return _parse_def()
 	var s = _parse_simples()
 	if _erro != "":
 		return {}
@@ -306,11 +330,27 @@ func _parse_simples() -> Dictionary:
 	if t.t == "NOME":
 		match t.v:
 			"pass", "break", "continue":
+				if t.v != "pass" and _parse_lacos == 0:
+					_definir_erro("'" + t.v + "' so pode ser usado dentro de um for ou while.", t.l, "sintaxe")
+					return {}
 				_avancar()
 				return {"t": t.v, "l": t.l}
+			"return":
+				if _funcoes_bloqueadas(t):
+					return {}
+				if _parse_funcoes == 0:
+					_definir_erro("'return' so pode aparecer dentro de uma funcao (def): ele devolve o resultado dela.", t.l, "sintaxe")
+					return {}
+				_avancar()
+				var devolve = null
+				if not (_eh("NL") or _eh("FIM") or _eh("DEDENT")):
+					devolve = _parse_expr()
+				return {"t": "return", "expr": devolve, "l": t.l}
 			"if", "for", "while":
 				_definir_erro("Um bloco " + t.v + " dentro de outro precisa comecar em uma linha nova, com recuo.", t.l, "sintaxe")
 				return {}
+			"def":
+				return _parse_def()
 		if _eh("OP", "=", 1):
 			if t.v in PALAVRAS_RESERVADAS:
 				_definir_erro("'" + t.v + "' e uma palavra reservada do Python e nao pode ser nome de variavel.", t.l, "sintaxe")
@@ -330,6 +370,12 @@ func _parse_simples() -> Dictionary:
 func _parse_bloco(cabecalho: String) -> Array:
 	if not _esperar_op(":", "Faltou ':' no fim do " + cabecalho + ". Ex.: " + cabecalho + " ...:"):
 		return []
+	_parse_blocos += 1
+	var corpo = _parse_corpo(cabecalho)
+	_parse_blocos -= 1
+	return corpo
+
+func _parse_corpo(cabecalho: String) -> Array:
 	if _eh("NL"):
 		_avancar()
 		if not _eh("INDENT"):
@@ -378,7 +424,10 @@ func _parse_while() -> Dictionary:
 	var cond = _parse_condicao("while")
 	if _erro != "":
 		return {}
-	return {"t": "while", "cond": cond, "corpo": _parse_bloco("while"), "l": linha}
+	_parse_lacos += 1
+	var corpo = _parse_bloco("while")
+	_parse_lacos -= 1
+	return {"t": "while", "cond": cond, "corpo": corpo, "l": linha}
 
 func _parse_for() -> Dictionary:
 	var linha = _avancar().l
@@ -393,7 +442,55 @@ func _parse_for() -> Dictionary:
 	var iteravel = _parse_expr()
 	if _erro != "":
 		return {}
-	return {"t": "for", "var": nome, "iter": iteravel, "corpo": _parse_bloco("for"), "l": linha}
+	_parse_lacos += 1
+	var corpo = _parse_bloco("for")
+	_parse_lacos -= 1
+	return {"t": "for", "var": nome, "iter": iteravel, "corpo": corpo, "l": linha}
+
+func _parse_def() -> Dictionary:
+	var t = _ver()
+	if _funcoes_bloqueadas(t):
+		return {}
+	var linha = _avancar().l
+	if _parse_blocos > 0:
+		_definir_erro("Crie funcoes fora de if, for, while e de outras funcoes: o def comeca sem recuo.", linha, "sintaxe")
+		return {}
+	if not _eh("NOME") or _ver().v in PALAVRAS_RESERVADAS:
+		_definir_erro("Depois de def vem o nome da funcao. Ex.: def atacar_duas_vezes(direcao):", linha, "sintaxe")
+		return {}
+	var nome = _avancar().v
+	if nome in NOMES_DO_JOGO:
+		_definir_erro("'" + nome + "' ja e um comando do jogo. Escolha outro nome para a sua funcao.", linha, "sintaxe")
+		return {}
+	if not _esperar_op("(", "Faltou '(' depois do nome. Ex.: def " + nome + "():"):
+		return {}
+	var params: Array = []
+	while _erro == "" and not _eh("OP", ")"):
+		if not _eh("NOME") or _ver().v in PALAVRAS_RESERVADAS:
+			_definir_erro("Os parametros sao nomes de variaveis separados por virgula. Ex.: def " + nome + "(direcao, vezes):", linha, "sintaxe")
+			return {}
+		var param = _avancar().v
+		if param in params:
+			_definir_erro("O parametro '" + param + "' aparece duas vezes em " + nome + "(...).", linha, "sintaxe")
+			return {}
+		params.append(param)
+		if _eh("OP", ","):
+			_avancar()
+		elif not _eh("OP", ")"):
+			_definir_erro("Separe os parametros com virgula. Ex.: def " + nome + "(direcao, vezes):", linha, "sintaxe")
+			return {}
+	if not _esperar_op(")", "Faltou fechar o parentese dos parametros de " + nome + "."):
+		return {}
+	_parse_funcoes += 1
+	var corpo = _parse_bloco("def")
+	_parse_funcoes -= 1
+	return {"t": "def", "nome": nome, "params": params, "corpo": corpo, "l": linha}
+
+func _funcoes_bloqueadas(t: Dictionary) -> bool:
+	if funcoes_liberadas:
+		return false
+	_definir_erro("Ainda nao: '" + t.v + "' sera liberado na Torre das Funcoes.", t.l, "bloqueio")
+	return true
 
 # Expressoes, da menor para a maior precedencia (como no Python).
 
@@ -560,44 +657,54 @@ func _exec_stmt(s: Dictionary) -> void:
 		"pass":
 			return
 		"break", "continue":
-			if _profundidade_laco == 0:
-				_falhar("'" + s.t + "' so pode ser usado dentro de um for ou while.", s.l)
-				return
 			_sinal = s.t
 		"atrib":
-			var v = _avaliar(s.expr)
-			if _erro != "":
-				_falhar_atual()
+			var v = await _valor(s.expr)
+			if _sinal != "":
 				return
-			variaveis[s.nome] = v
-			if not _multilinha:
+			_guardar_variavel(s.nome, v)
+			if _ecoar():
 				_escrever(s.nome + " = " + _repr(v))
 		"atrib_op":
-			if not variaveis.has(s.nome):
+			if not tem_variavel(s.nome):
 				_falhar("'" + s.nome + "' nao foi definida. Crie antes: " + s.nome + " = 0", s.l)
 				return
-			var delta = _avaliar(s.expr)
+			if not _locais.is_empty() and not _locais.back().has(s.nome):
+				_falhar("'" + s.nome + "' e de fora da funcao. Dentro dela, " + s.nome + " " + s.op + "= nao muda a variavel de fora: receba o valor como parametro e devolva o novo com return.", s.l)
+				return
+			var delta = await _valor(s.expr)
+			if _sinal != "":
+				return
+			var novo = _binario(s.op, ler_variavel(s.nome), delta, s.l)
 			if _erro != "":
 				_falhar_atual()
 				return
-			var novo = _binario(s.op, variaveis[s.nome], delta, s.l)
-			if _erro != "":
-				_falhar_atual()
-				return
-			variaveis[s.nome] = novo
-			if not _multilinha:
+			_guardar_variavel(s.nome, novo)
+			if _ecoar():
 				_escrever(s.nome + " = " + _repr(novo))
 		"expr":
 			var e = s.expr
 			if typeof(e) == TYPE_DICTIONARY and e.get("t") == "chamada" and e.nome in COMANDOS:
 				await _exec_comando(e)
 				return
-			var valor = _avaliar(e)
-			if _erro != "":
-				_falhar_atual()
+			var valor = await _valor(e)
+			if _sinal != "":
 				return
-			if not _multilinha and valor != null:
+			if _ecoar() and valor != null:
 				_escrever(_repr(valor))
+		"def":
+			funcoes[s.nome] = {"params": s.params, "corpo": s.corpo}
+			variaveis.erase(s.nome)
+			if _ecoar():
+				_escrever("Funcao " + _assinatura(s.nome, s.params) + " criada.")
+		"return":
+			var devolvido = null
+			if s.expr != null:
+				devolvido = await _valor(s.expr)
+				if _sinal != "":
+					return
+			_retorno = devolvido
+			_sinal = "return"
 		"if":
 			await _exec_if(s)
 		"while":
@@ -609,9 +716,8 @@ func _exec_if(s: Dictionary) -> void:
 	var cadeia = s.clausulas.size() > 1 or s.senao != null
 	var corpo = null
 	for c in s.clausulas:
-		var cond = _avaliar(c.cond)
-		if _erro != "":
-			_falhar_atual()
+		var cond = await _valor(c.cond)
+		if _sinal != "":
 			return
 		if _verdadeiro(cond):
 			corpo = c.corpo
@@ -619,7 +725,7 @@ func _exec_if(s: Dictionary) -> void:
 	if corpo == null and s.senao != null:
 		corpo = s.senao
 	if corpo == null:
-		if not _multilinha:
+		if _ecoar():
 			_escrever("Condição falsa — nenhuma ação executada.")
 		return
 	if cadeia:
@@ -632,9 +738,8 @@ func _exec_while(s: Dictionary) -> void:
 	_profundidade_laco += 1
 	_profundidade_while += 1
 	while true:
-		var cond = _avaliar(s.cond)
-		if _erro != "":
-			_falhar_atual()
+		var cond = await _valor(s.cond)
+		if _sinal != "":
 			break
 		if not _verdadeiro(cond):
 			break
@@ -654,9 +759,8 @@ func _exec_while(s: Dictionary) -> void:
 	_profundidade_while -= 1
 
 func _exec_for(s: Dictionary) -> void:
-	var colecao = _avaliar(s.iter)
-	if _erro != "":
-		_falhar_atual()
+	var colecao = await _valor(s.iter)
+	if _sinal != "":
 		return
 	var itens: Array = []
 	if typeof(colecao) == TYPE_ARRAY:
@@ -669,7 +773,7 @@ func _exec_for(s: Dictionary) -> void:
 		return
 	_profundidade_laco += 1
 	for item in itens:
-		variaveis[s.var] = item
+		_guardar_variavel(s.var, item)
 		await _exec_bloco(s.corpo)
 		if _sinal == "break":
 			_sinal = ""
@@ -687,9 +791,8 @@ func _exec_comando(e: Dictionary) -> void:
 		"print":
 			var partes: Array = []
 			for a in args:
-				var v = _avaliar(a)
-				if _erro != "":
-					_falhar_atual()
+				var v = await _valor(a)
+				if _sinal != "":
 					return
 				partes.append(_texto(v))
 			_escrever(" ".join(partes))
@@ -698,12 +801,11 @@ func _exec_comando(e: Dictionary) -> void:
 				_falhar(nome + "() recebe uma direcao. Ex.: " + nome + "('direita')", e.l)
 				return
 			var arg = args[0]
-			if typeof(arg) == TYPE_DICTIONARY and arg.get("t") == "nome" and not variaveis.has(arg.nome):
+			if typeof(arg) == TYPE_DICTIONARY and arg.get("t") == "nome" and not tem_variavel(arg.nome):
 				_falhar("'" + arg.nome + "' nao e uma string nem uma variavel definida.\nDica: use aspas — " + nome + "('" + arg.nome + "')", e.l)
 				return
-			var direcao = _avaliar(arg)
-			if _erro != "":
-				_falhar_atual()
+			var direcao = await _valor(arg)
+			if _sinal != "":
 				return
 			await _acao(nome, [_texto(direcao)], e.l)
 		"fireball":
@@ -712,21 +814,19 @@ func _exec_comando(e: Dictionary) -> void:
 				return
 			var dir_no = args[1]
 			var direcao_fb = ""
-			if typeof(dir_no) == TYPE_DICTIONARY and dir_no.get("t") == "nome" and not variaveis.has(dir_no.nome):
+			if typeof(dir_no) == TYPE_DICTIONARY and dir_no.get("t") == "nome" and not tem_variavel(dir_no.nome):
 				direcao_fb = dir_no.nome
 			else:
-				direcao_fb = _texto(_avaliar(dir_no))
-				if _erro != "":
-					_falhar_atual()
+				direcao_fb = _texto(await _valor(dir_no))
+				if _sinal != "":
 					return
 			await _acao("fireball", [args[0].nome, direcao_fb], e.l)
 		"escolher":
 			if args.size() != 1:
 				_falhar("Use escolher(1), escolher(2) ou escolher(3).", e.l)
 				return
-			var n = _avaliar(args[0])
-			if _erro != "":
-				_falhar_atual()
+			var n = await _valor(args[0])
+			if _sinal != "":
 				return
 			if typeof(n) != TYPE_INT:
 				_falhar("escolher() recebe um numero. Ex.: escolher(1)", e.l)
@@ -779,6 +879,142 @@ func _parar_laco_infinito():
 	_sinal = "parar"
 	_escrever("[grimorio] Laco infinito? O programa passou do limite de " + str(MAX_ACOES) + " acoes e foi interrompido. Revise a condicao de parada. Se a sala travou, use reiniciar_sala().")
 
+# ─── Funcoes do jogador e escopo ────────────────────────────────────
+
+# Valor de uma expressao durante a execucao. Se algo interromper (erro, Esc, limite
+# de acoes), devolve null com _sinal marcado: quem chamou so precisa olhar _sinal.
+func _valor(no):
+	var resolvido = await _resolver(no)
+	if _sinal != "":
+		return null
+	var v = _avaliar(resolvido)
+	if _erro != "":
+		_falhar_atual()
+		return null
+	return v
+
+# Funcoes do jogador podem fazer acoes (cada uma e um turno), entao rodam aqui, de
+# forma assincrona, antes do _avaliar (sincrono). Cada chamada vira o valor que
+# devolveu. and/or seguem em curto-circuito: o lado direito so roda se precisar.
+func _resolver(no):
+	if funcoes.is_empty() or not _tem_chamada_do_jogador(no):
+		return no
+	var r: Dictionary = no.duplicate()
+	match no.t:
+		"chamada":
+			r.args = await _resolver_lista(no.args)
+			if _interrompido():
+				return null
+			if funcoes.has(no.nome):
+				var valores: Array = []
+				for a in r.args:
+					valores.append(_avaliar(a))
+				if _erro != "":
+					return null
+				return {"t": "valor", "v": await _chamar_do_jogador(no.nome, valores, no.l), "l": no.l}
+		"ou", "e":
+			var a = await _resolver(no.a)
+			if _interrompido():
+				return null
+			var va = _avaliar(a)
+			if _erro != "":
+				return null
+			if _verdadeiro(va) == (no.t == "ou"):
+				return {"t": "valor", "v": va, "l": no.l}
+			return await _resolver(no.b)
+		"cmp":
+			r.a = await _resolver(no.a)
+			var itens: Array = []
+			for item in no.itens:
+				if _interrompido():
+					return null
+				itens.append({"op": item.op, "b": await _resolver(item.b)})
+			r.itens = itens
+		"lista":
+			r.itens = await _resolver_lista(no.itens)
+		_:
+			for chave in ["a", "b", "alvo", "i"]:
+				if no.has(chave) and not _interrompido():
+					r[chave] = await _resolver(no[chave])
+	return null if _interrompido() else r
+
+func _resolver_lista(nos: Array) -> Array:
+	var resolvidos: Array = []
+	for n in nos:
+		resolvidos.append(await _resolver(n))
+		if _interrompido():
+			break
+	return resolvidos
+
+func _tem_chamada_do_jogador(no) -> bool:
+	if typeof(no) != TYPE_DICTIONARY:
+		return false
+	if no.get("t") == "chamada" and funcoes.has(no.nome):
+		return true
+	for chave in ["a", "b", "alvo", "i"]:
+		if _tem_chamada_do_jogador(no.get(chave)):
+			return true
+	for chave in ["args", "itens"]:
+		for filho in no.get(chave, []):
+			if _tem_chamada_do_jogador(filho):
+				return true
+	return false
+
+func _interrompido() -> bool:
+	return _sinal != "" or _erro != ""
+
+func _chamar_do_jogador(nome: String, valores: Array, linha: int):
+	var f = funcoes[nome]
+	if valores.size() != f.params.size():
+		_falhar(_assinatura(nome, f.params) + " espera " + _quantos_valores(f.params.size()) + ", mas recebeu " + _quantos_valores(valores.size()) + ".", linha)
+		return null
+	if _locais.size() >= MAX_CHAMADAS_ANINHADAS:
+		_falhar("Chamadas de funcao demais ao mesmo tempo (limite " + str(MAX_CHAMADAS_ANINHADAS) + "). Uma funcao que chama a si mesma precisa de um caso que termine sem se chamar de novo.", linha)
+		return null
+	var escopo: Dictionary = {}
+	for i in range(valores.size()):
+		escopo[f.params[i]] = valores[i]
+	_locais.append(escopo)
+	await _exec_bloco(f.corpo)
+	_locais.pop_back()
+	if _sinal != "return":
+		return null
+	_sinal = ""
+	var devolvido = _retorno
+	_retorno = null
+	return devolvido
+
+# Escopo como no Python: dentro de uma funcao valem primeiro as variaveis locais
+# (parametros e o que ela criou), depois as de fora. O player usa estas duas para
+# achar a variavel do fireball.
+func tem_variavel(nome: String) -> bool:
+	return (not _locais.is_empty() and _locais.back().has(nome)) or variaveis.has(nome)
+
+func ler_variavel(nome: String):
+	if not _locais.is_empty() and _locais.back().has(nome):
+		return _locais.back()[nome]
+	return variaveis.get(nome)
+
+func _guardar_variavel(nome: String, valor):
+	if _locais.is_empty():
+		variaveis[nome] = valor
+		funcoes.erase(nome)
+	else:
+		_locais.back()[nome] = valor
+
+# Como no console do Python: so ecoa resultados de comandos de uma linha, e nunca
+# o que acontece dentro de uma funcao.
+func _ecoar() -> bool:
+	return not _multilinha and _locais.is_empty()
+
+func _assinatura(nome: String, params: Array) -> String:
+	return nome + "(" + ", ".join(params) + ")"
+
+func _quantos_valores(n: int) -> String:
+	if n == 0:
+		return "nenhum valor"
+	return str(n) + (" valor" if n == 1 else " valores")
+
 # ─── Avaliacao de expressoes (sincrona) ─────────────────────────────
 
 func _avaliar(no):
@@ -788,8 +1024,11 @@ func _avaliar(no):
 		"valor":
 			return no.v
 		"nome":
-			if variaveis.has(no.nome):
-				return variaveis[no.nome]
+			if tem_variavel(no.nome):
+				return ler_variavel(no.nome)
+			if funcoes.has(no.nome):
+				_definir_erro("'" + no.nome + "' e uma funcao. Para usa-la, chame com parenteses: " + no.nome + "(...)", no.l, "execucao")
+				return null
 			_definir_erro("'" + no.nome + "' nao foi definida. Crie antes: " + no.nome + " = valor", no.l, "execucao")
 			return null
 		"lista":
@@ -936,6 +1175,10 @@ func _chamar_funcao(no: Dictionary):
 	if nome in COMANDOS:
 		_definir_erro(nome + "(...) e uma acao: escreva-a sozinha na linha, sem usar o resultado.", no.l, "execucao")
 		return null
+	if funcoes.has(nome):
+		# Na execucao, _resolver ja trocou estas chamadas pelo valor devolvido.
+		_definir_erro("A funcao " + nome + "() nao pode ser usada aqui.", no.l, "execucao")
+		return null
 	match nome:
 		"atacar_com":
 			_definir_erro_cru("atacar_com foi substituido por fireball.\nUse: fireball(poder, 'direcao')", no.l)
@@ -1002,7 +1245,13 @@ func _chamar_funcao(no: Dictionary):
 		"minha_mana":
 			return player.mana if player else 0
 		_:
-			_definir_erro_cru("Comando nao reconhecido. Tente: mover('direita'), atacar('direita') ou fireball(poder, 'direita')", no.l)
+			var suas = ""
+			if not funcoes.is_empty():
+				var assinaturas: Array = []
+				for f in funcoes:
+					assinaturas.append(_assinatura(f, funcoes[f].params))
+				suas = "\nSuas funcoes: " + ", ".join(assinaturas)
+			_definir_erro_cru("Comando nao reconhecido. Tente: mover('direita'), atacar('direita') ou fireball(poder, 'direita')" + suas, no.l)
 			return null
 	_definir_erro(nome + "() recebeu valores que ele nao entende.", no.l, "execucao")
 	return null
