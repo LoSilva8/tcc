@@ -32,7 +32,7 @@ const MAX_CHAMADAS_ANINHADAS = 30
 const NOMES_DO_JOGO = ["mover", "atacar", "fireball", "escolher", "print", "range", "len", "str",
 	"int", "abs", "min", "max", "caminho_livre", "inimigo_a_frente", "inimigos_restantes",
 	"minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta", "reiniciar",
-	"reiniciar_sala", "desafio", "atacar_com"]
+	"reiniciar_sala", "desafio", "atacar_com", "abrir_selo"]
 
 var variaveis: Dictionary = {}
 # Funcoes criadas com def. Como as variaveis, continuam valendo nos proximos comandos.
@@ -101,6 +101,16 @@ func dentro_de_while() -> bool:
 
 func dentro_de_funcao() -> bool:
 	return not _locais.is_empty()
+
+# O Selo do Retorno chama uma funcao do aluno fora de um programa, com valores
+# escolhidos pelo jogo, e confere o que ela devolve (como um teste automatizado).
+# Erros e prints aparecem no terminal como em qualquer programa.
+func testar_funcao(nome: String, valores: Array) -> Dictionary:
+	_preparar_execucao()
+	_multilinha = true
+	var devolvido = await _chamar_do_jogador(nome, valores, funcoes[nome].get("l", 0))
+	executando = false
+	return {"valor": devolvido, "ok": _sinal == "" and _erro == ""}
 
 # A funcao que esta rodando agora (a mais interna) recebe parametros?
 func funcao_com_parametros() -> bool:
@@ -703,7 +713,7 @@ func _exec_stmt(s: Dictionary) -> void:
 			if _ecoar() and valor != null:
 				_escrever(_repr(valor))
 		"def":
-			funcoes[s.nome] = {"params": s.params, "corpo": s.corpo}
+			funcoes[s.nome] = {"params": s.params, "corpo": s.corpo, "l": s.l}
 			variaveis.erase(s.nome)
 			if _ecoar():
 				_escrever("Funcao " + _assinatura(s.nome, s.params) + " criada.")
@@ -1198,7 +1208,7 @@ func _chamar_funcao(no: Dictionary):
 		"abrir_bau", "abrir_porta", "abrir_comporta":
 			_definir_erro(nome + "() so funciona dentro do desafio: fique ao lado do objeto e digite desafio(...).", no.l, "execucao")
 			return null
-		"reiniciar", "reiniciar_sala":
+		"reiniciar", "reiniciar_sala", "abrir_selo":
 			_definir_erro("Digite " + nome + "() sozinho no terminal, fora de programas.", no.l, "execucao")
 			return null
 	var args: Array = []

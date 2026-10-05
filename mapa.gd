@@ -59,6 +59,16 @@ const LAYOUT_PARAMETROS = [
 	"###########",
 ]
 const PARAMETROS_CENTRO = Vector2i(5, 2)
+const SALA_SELO = 15
+# Torre, andar 3: o Selo do Retorno fecha o corredor que leva a saida.
+const LAYOUT_SELO = [
+	"##########",
+	"#.....####",
+	"#.......E#",
+	"#.....####",
+	"##########",
+]
+const SELO_POS = Vector2i(6, 2)
 const LAYOUT_OUROBOROS = [
 	"#########",
 	"#.......#",
@@ -71,6 +81,7 @@ const LAYOUT_OUROBOROS = [
 var bau_aberto = false
 var porta_aberta = false
 var comporta_aberta = false
+var selo_aberto = false
 
 var paredes: Array = []
 var saida_pos: Vector2i = Vector2i(-1, -1)
@@ -184,6 +195,7 @@ func carregar_sala(indice: int):
 	bau_aberto = false
 	porta_aberta = false
 	comporta_aberta = false
+	selo_aberto = false
 
 	for filho in get_children():
 		filho.queue_free()
@@ -216,6 +228,8 @@ func carregar_sala(indice: int):
 			layout = LAYOUT_PARAMETROS
 			inicio_pos = PARAMETROS_CENTRO
 			_sortear_runas_parametros()
+		SALA_SELO:
+			layout = LAYOUT_SELO
 		_:
 			if indice < layouts.size():
 				layout = layouts[indice]
@@ -287,6 +301,8 @@ func _draw():
 		_desenhar_desafios()
 	elif sala_atual == 5:
 		_desenhar_comporta()
+	elif sala_atual == SALA_SELO:
+		_desenhar_selo()
 
 	if neblina and player:
 		_desenhar_neblina(linhas, colunas)
@@ -430,6 +446,8 @@ func eh_parede(grid_pos: Vector2i) -> bool:
 		return true
 	if sala_atual == 5 and grid_pos == COMPORTA_POS and not comporta_aberta:
 		return true
+	if sala_atual == SALA_SELO and grid_pos == SELO_POS and not selo_aberto:
+		return true
 	return grid_pos in paredes
 
 func _desenhar_desafios():
@@ -454,6 +472,21 @@ func _desenhar_comporta():
 		draw_circle(c + Vector2(36, 20), 7, Color("d68bff"))
 		draw_circle(c + Vector2(36, 44), 7, Color("8bd6ff"))
 	draw_string(ThemeDB.fallback_font, c + Vector2(0, 17), "COMPORTA", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.WHITE)
+
+func _desenhar_selo():
+	var canto = Vector2(SELO_POS) * TAMANHO_CELULA
+	var c = canto + Vector2(TAMANHO_CELULA, TAMANHO_CELULA) / 2
+	if selo_aberto:
+		draw_arc(c, 24, 0.0, TAU, 40, Color(0.45, 0.9, 1.0, 0.25), 2.0)
+		return
+	draw_rect(Rect2(canto + Vector2(4, 4), Vector2(56, 56)), Color(0.07, 0.09, 0.16))
+	draw_circle(c, 25, Color(0.12, 0.2, 0.32))
+	draw_arc(c, 25, 0.0, TAU, 48, Color(0.45, 0.9, 1.0, 0.9), 3.0)
+	draw_arc(c, 18, 0.0, TAU, 40, Color(0.45, 0.9, 1.0, 0.45), 1.5)
+	var fonte = ThemeDB.fallback_font
+	var largura = fonte.get_string_size("return", HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	draw_string(fonte, c + Vector2(-largura / 2, 4), "return", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.7, 0.95, 1.0))
+	draw_string(fonte, canto + Vector2(4, 14), "SELO", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.WHITE)
 
 func posicao_valida(grid_pos: Vector2i) -> bool:
 	if layout_atual.is_empty():

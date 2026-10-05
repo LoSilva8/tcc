@@ -39,6 +39,7 @@ func _testar():
 	await _testar_transicao_labirinto_torre()
 	await _testar_sentinelas()
 	await _testar_parametros()
+	await _testar_selo()
 	await _testar_continuar_na_torre()
 
 	DirAccess.remove_absolute(ARQUIVO)
@@ -158,7 +159,47 @@ func _testar_parametros():
 	verificar(gi.quantidade_inimigos_vivos() == 0, "Uma funcao com parametros desfaz todas as Gemeas.")
 	await _resolver_runa()
 	await jogo._executar_programa("for i in range(4):\n    mover('direita')")
-	verificar(jogo.fase_4_concluida and "Camara dos Parametros concluida" in jogo.output_label.text, "A saida conclui o andar 2.")
+	verificar("Camara dos Parametros concluida" in jogo.output_label.text, "A saida conclui o andar 2.")
+	verificar(await _esperar_sala(jogo.SALA_SELO), "O andar 2 leva ao andar 3 (sala 15).")
+
+# ─── Sala 15: o Selo do Retorno testa uma funcao com return ─────────
+
+func _abrir_selo() -> String:
+	return await _saida_de(func(): await jogo._on_comando_enviado("abrir_selo()"))
+
+func _testar_selo():
+	var p = jogo.player
+	var mapa = jogo.mapa
+	var texto = jogo.output_label.text
+	verificar("Selo do Retorno" in texto and "return valor" in texto, "Sala 15 apresenta return (RF016).")
+	verificar("return valor" in jogo._texto_livro_magias() and "abrir_selo()" in jogo._texto_livro_magias(), "Livro explica return e o Selo.")
+	await _resolver_runa()
+	p.grid_pos = Vector2i(5, 2)
+	var saida = await _saida_de(func(): await jogo._on_comando_enviado("mover('direita')"))
+	verificar("abrir_selo()" in saida and p.grid_pos == Vector2i(5, 2), "O Selo bloqueia o corredor e ensina o comando.")
+
+	verificar("ainda nao existe" in await _abrir_selo(), "Sem a funcao, o Selo explica o que criar.")
+	await jogo._executar_programa("def poder_da_runa():\n    return 3")
+	verificar("exatamente 1 parametro" in await _abrir_selo(), "Funcao sem o parametro runa e recusada.")
+	await jogo._executar_programa("def poder_da_runa(runa):\n    if runa == 'fogo':\n        print(3)\n    elif runa == 'gelo':\n        print(2)\n    else:\n        print(1)")
+	saida = await _abrir_selo()
+	verificar("devolveu None" in saida and "Faltou return?" in saida and not mapa.selo_aberto, "print no lugar de return: o Selo explica a diferenca.")
+	await jogo._executar_programa("def poder_da_runa(runa):\n    return 3")
+	saida = await _abrir_selo()
+	verificar("mas o esperado era" in saida and not mapa.selo_aberto, "Valor errado mantem o Selo fechado: " + saida)
+	await jogo._executar_programa("def poder_da_runa(runa):\n    return poderes[runa]")
+	saida = await _abrir_selo()
+	verificar("'poderes' nao foi definida" in saida and "parou antes de devolver" in saida, "Erro dentro da funcao aparece e o Selo segue fechado.")
+	saida = await _saida_de(func(): await jogo._executar_programa("abrir_selo()"))
+	verificar("sozinho no terminal" in saida, "abrir_selo() dentro de um programa e explicado.")
+	verificar(p.grid_pos == Vector2i(5, 2) and jogo.player.hp == jogo.player.hp_max, "Tentativas no Selo nao custam vida nem movem o mago.")
+
+	await jogo._executar_programa("def poder_da_runa(runa):\n    if runa == 'fogo':\n        return 3\n    elif runa == 'gelo':\n        return 2\n    return 1")
+	saida = await _abrir_selo()
+	verificar(saida.count("Certo!") == 4 and "se abriu" in saida and mapa.selo_aberto, "Funcao certa passa nos 4 testes e abre o Selo: " + saida)
+	verificar("ja esta aberto" in await _abrir_selo(), "Selo aberto nao testa de novo.")
+	await jogo._executar_programa("for i in range(3):\n    mover('direita')")
+	verificar(jogo.fase_4_concluida and "Selo do Retorno concluido" in jogo.output_label.text, "Com o Selo aberto, a saida conclui o andar 3.")
 
 # ─── Continuar direto na Torre ──────────────────────────────────────
 
@@ -169,3 +210,4 @@ func _testar_continuar_na_torre():
 	await jogo.continuar(3)
 	verificar(jogo.sala_atual == jogo.SALA_TORRE and jogo.funcoes_desbloqueadas, "Continuar na Torre ja libera def.")
 	verificar(jogo.gerenciador_inimigos.quantidade_inimigos_vivos() == 3, "Run nova na Torre traz as Sentinelas de volta.")
+	verificar("Nao ha nenhum selo" in await _abrir_selo(), "abrir_selo() fora da sala do Selo avisa.")

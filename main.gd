@@ -25,6 +25,9 @@ const SALA_PONTE = 11
 const SALA_LABIRINTO_CHEFE = 12
 const SALA_TORRE = 13
 const SALA_PARAMETROS = 14
+const SALA_SELO = 15
+# Resposta que o Selo do Retorno espera de poder_da_runa(runa).
+const PODER_DAS_RUNAS = {"fogo": 3, "gelo": 2, "arcano": 1}
 # Onde cada bioma comeca. O menu principal so oferece os biomas ja liberados.
 const BIOMAS = [
 	{"nome": "Floresta dos Primeiros Passos", "sala": SALA_FLORESTA},
@@ -35,7 +38,7 @@ const BIOMAS = [
 const LIMITE_HISTORICO = 5
 const ATRASO_ENTRE_ACOES = 0.22
 const PALAVRAS_PYTHON = ["if", "elif", "else", "for", "while", "in", "not", "and", "or", "break", "continue", "pass", "True", "False", "None", "def", "return"]
-const FUNCOES_DO_JOGO = ["mover", "atacar", "fireball", "print", "range", "len", "str", "int", "abs", "min", "max", "escolher", "caminho_livre", "inimigo_a_frente", "inimigos_restantes", "minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta"]
+const FUNCOES_DO_JOGO = ["mover", "atacar", "fireball", "print", "range", "len", "str", "int", "abs", "min", "max", "escolher", "caminho_livre", "inimigo_a_frente", "inimigos_restantes", "minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta", "abrir_selo"]
 
 var historico: Array = []
 var historico_index: int = -1
@@ -658,6 +661,11 @@ func _texto_livro_magias() -> String:
 		if sala_atual >= SALA_PARAMETROS:
 			linhas.append("  def nome(a, b):  parametros recebem os valores da chamada: nome('cima', 2).")
 			linhas.append("  Sentinelas Gemeas so sentem funcoes com parametros.")
+		if sala_atual >= SALA_SELO:
+			linhas.append("  return valor  termina a funcao e devolve o valor: x = dobro(3) guarda o que ela devolveu.")
+			linhas.append("  print so mostra na tela; quem precisa do resultado usa return.")
+		if sala_atual == SALA_SELO:
+			linhas.append("  abrir_selo()  o Selo testa poder_da_runa(runa) com varias runas.")
 		linhas.append("")
 	if not tutorial.esta_ativo() and not grimorio_desbloqueado:
 		linhas.append("Grimorio { }")
@@ -999,6 +1007,8 @@ func _on_chegou_na_saida():
 		if sala_atual == SALA_TORRE:
 			_adicionar_saida("[fase 4] Salao das Sentinelas concluido! Uma funcao escrita uma vez e chamada tres vezes: e para isso que def serve.")
 		if sala_atual == SALA_PARAMETROS:
+			_adicionar_saida("[fase 4] Camara dos Parametros concluida! Uma funcao, varios usos: os parametros mudam o que ela faz a cada chamada.")
+		if sala_atual == SALA_SELO:
 			_concluir_ultimo_andar()
 			return
 
@@ -1139,6 +1149,62 @@ func _anunciar_sala_torre(indice: int):
 			_adicionar_saida("Elas so reconhecem magias que recebem valores: funcoes com parametros.")
 			_adicionar_saida("def golpear(direcao, vezes): cria uma funcao com dois parametros. Ao chamar golpear('cima', 2), direcao vale 'cima' e vezes vale 2.")
 			_adicionar_saida("As runas mudam a cada visita: uma so funcao com parametros serve para todas as Sentinelas.")
+		SALA_SELO:
+			_adicionar_saida("[fase 4] Torre das Funcoes: Selo do Retorno")
+			_adicionar_saida("O Selo nao aceita golpes: ele testa a sua funcao, como um professor corrigindo exercicios.")
+			_adicionar_saida("Crie def poder_da_runa(runa): que DEVOLVA o poder de cada runa: fogo vale 3, gelo vale 2, arcano vale 1.")
+			_adicionar_saida("return valor: termina a funcao e devolve o valor para quem chamou. print so mostra na tela.")
+			_adicionar_saida("Teste voce mesmo com print(poder_da_runa('gelo')) e, quando estiver pronta, digite abrir_selo().")
+	_adicionar_saida("------------------------------")
+
+# Selo do Retorno: testa poder_da_runa(runa) com runas sorteadas e so abre se a
+# funcao devolver (return) o valor certo em todas. Errar nao custa turno.
+func _abrir_selo():
+	if sala_atual != SALA_SELO:
+		_adicionar_saida("Nao ha nenhum selo nesta sala.")
+		return
+	if mapa.selo_aberto:
+		_adicionar_saida("[selo] O Selo do Retorno ja esta aberto.")
+		return
+	var funcao = interpretador.funcoes.get("poder_da_runa")
+	if funcao == null:
+		_adicionar_saida("[selo] O Selo procura a funcao poder_da_runa(runa), mas ela ainda nao existe. Crie com def poder_da_runa(runa): e devolva o poder com return.")
+		return
+	if funcao.params.size() != 1:
+		_adicionar_saida("[selo] O Selo chama poder_da_runa com uma runa por vez: a funcao precisa de exatamente 1 parametro. Ex.: def poder_da_runa(runa):")
+		return
+	var testes = PODER_DAS_RUNAS.keys()
+	testes.shuffle()
+	# Uma runa repetida no fim: a funcao precisa acertar sempre, nao so uma vez.
+	testes.append(testes[randi() % testes.size()])
+	_adicionar_saida("[selo] O Selo testa a sua funcao com " + str(testes.size()) + " runas...")
+	executando_programa = true
+	_sala_do_programa = sala_atual
+	_programa_no_tutorial = false
+	var aprovada = true
+	for runa in testes:
+		var chamada = "poder_da_runa('" + runa + "')"
+		var resultado = await interpretador.testar_funcao("poder_da_runa", [runa])
+		var esperado = PODER_DAS_RUNAS[runa]
+		if not resultado.ok:
+			_adicionar_saida("[selo] " + chamada + " parou antes de devolver um valor. Corrija o erro acima e tente de novo.")
+		elif resultado.valor == null:
+			_adicionar_saida("[selo] " + chamada + " devolveu None, mas o esperado era " + str(esperado) + ". Faltou return? print so mostra na tela; return devolve o valor.")
+		elif not interpretador._iguais(resultado.valor, esperado):
+			_adicionar_saida("[selo] " + chamada + " devolveu " + interpretador._repr(resultado.valor) + ", mas o esperado era " + str(esperado) + ".")
+		else:
+			_adicionar_saida("[selo] " + chamada + " devolveu " + str(esperado) + ". Certo!")
+			continue
+		aprovada = false
+		break
+	executando_programa = false
+	if not aprovada:
+		_adicionar_saida("O Selo continua fechado. Tentar de novo nao custa turno.")
+		_adicionar_saida("------------------------------")
+		return
+	mapa.selo_aberto = true
+	mapa.queue_redraw()
+	_adicionar_saida("[selo] O Selo do Retorno se abriu: a sua funcao devolveu o valor certo em todos os testes. A saida esta livre.")
 	_adicionar_saida("------------------------------")
 
 # Ultimo andar construido ate agora: os proximos entram aqui.
@@ -1146,9 +1212,9 @@ func _concluir_ultimo_andar():
 	if fase_4_concluida:
 		return
 	fase_4_concluida = true
-	_adicionar_saida("[fase 4] Camara dos Parametros concluida!")
-	_adicionar_saida("Uma funcao, varios usos: os parametros mudam o que ela faz a cada chamada.")
-	_adicionar_saida("Os proximos andares da Torre ainda estao em construcao. Fim da versao jogavel desta etapa.")
+	_adicionar_saida("[fase 4] Selo do Retorno concluido!")
+	_adicionar_saida("Sua funcao devolveu valores e o Selo usou cada um deles: e isso que return faz.")
+	_adicionar_saida("O Arquimago da Corrupcao ainda esta sendo preparado. Fim da versao jogavel desta etapa.")
 	_adicionar_saida("------------------------------")
 
 func _input(event):
@@ -1243,6 +1309,11 @@ func _on_comando_enviado(texto: String):
 		_adicionar_saida(">>> " + texto)
 		_preparar_proximo_comando()
 		await _reiniciar_sala_atual()
+		return
+	if texto == "abrir_selo()":
+		_adicionar_saida(">>> " + texto)
+		_preparar_proximo_comando()
+		await _abrir_selo()
 		return
 	if texto.begins_with("desafio"):
 		_adicionar_saida(">>> " + texto)

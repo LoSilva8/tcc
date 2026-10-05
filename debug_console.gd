@@ -65,7 +65,7 @@ func _executar(comando: String) -> String:
 	match cmd:
 		"ajuda":
 			return "Comandos:\n" + \
-				"  sala <n>          - vai direto para a sala n (0-14; 5-8 cavernas, 9-12 labirinto, 13-14 torre)\n" + \
+				"  sala <n>          - vai direto para a sala n (0-15; 5-8 cavernas, 9-12 labirinto, 13-15 torre)\n" + \
 				"  spawn <tipo> <x> <y> - spawna inimigo (normal/escudo/chefe/elemental/oraculo/elo/ouroboros/sentinela)\n" + \
 				"  tutorial_skip      - pula o tutorial\n" + \
 				"  hp <n>             - define HP do jogador\n" + \

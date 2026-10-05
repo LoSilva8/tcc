@@ -136,6 +136,8 @@ func _mover(direcao: String) -> String:
 			return "Bloqueado. Para abrir o bau, digite desafio(bau)."
 		if mapa.sala_atual == 5 and nova_pos == mapa.COMPORTA_POS:
 			return "Bloqueado. Para estabilizar a comporta, digite desafio(comporta)."
+		if mapa.sala_atual == mapa.SALA_SELO and nova_pos == mapa.SELO_POS:
+			return "Bloqueado. O Selo do Retorno so abre quando poder_da_runa(runa) devolver o valor certo. Depois digite abrir_selo()."
 		if mapa.has_method("eh_ponte") and mapa.sala_atual == mapa.SALA_PONTE:
 			return "Bloqueado. Ali so ha abismo: siga a ponte de cristal."
 		return "Bloqueado. Ha uma parede nessa direcao."
