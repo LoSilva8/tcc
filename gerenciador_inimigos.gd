@@ -9,6 +9,7 @@ const BossSaidaCena = preload("res://boss_saida.tscn")
 const EloCena = preload("res://elo.tscn")
 const OuroborosCena = preload("res://ouroboros.tscn")
 const SentinelaCena = preload("res://sentinela.tscn")
+const ArquimagoCena = preload("res://arquimago.tscn")
 const TAMANHO_CELULA = 64
 const PASSOS = [
 	Vector2i(1, 0),
@@ -113,6 +114,15 @@ func spawnar_sentinela(pos: Vector2i, golpes: int = 2, exige_parametro: bool = f
 		sentinela.rotulo_embaixo()
 	inimigos[pos] = sentinela
 
+func spawnar_arquimago(pos: Vector2i, pedestais: Array):
+	if pos in inimigos:
+		return
+	var arquimago = ArquimagoCena.instantiate()
+	add_child(arquimago)
+	arquimago.inicializar(pos, pedestais)
+	arquimago.chefe_derrotado.connect(func(): emit_signal("chefe_derrotado"))
+	inimigos[pos] = arquimago
+
 func chefe_labirinto_vivo() -> bool:
 	for pos in inimigos:
 		var i = inimigos[pos]
@@ -138,6 +148,9 @@ func _laco_ativo(so_while: bool) -> bool:
 
 func _funcao_ativa() -> bool:
 	return player != null and player.interpretador != null and player.interpretador.dentro_de_funcao()
+
+func _if_ativo() -> bool:
+	return player != null and player.interpretador != null and player.interpretador.dentro_de_if()
 
 func spawnar_boss_saida(pos: Vector2i, area_inicio: Vector2i, area_tamanho: Vector2i):
 	if pos in inimigos:
@@ -203,6 +216,8 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 			resultado = inimigo.receber_dano(dano, _laco_ativo(false))
 		elif inimigo.get_script() == preload("res://ouroboros.gd"):
 			resultado = inimigo.receber_dano(dano, usando_variavel, _laco_ativo(true))
+		elif inimigo.get_script() == preload("res://arquimago.gd"):
+			resultado = inimigo.receber_dano(dano, _funcao_ativa(), _laco_ativo(false), _if_ativo())
 		elif inimigo.get_script() == preload("res://sentinela.gd"):
 			var interpretador = player.interpretador if player else null
 			resultado = inimigo.receber_dano(dano, _funcao_ativa(), interpretador != null and interpretador.funcao_com_parametros())
@@ -262,6 +277,10 @@ func processar_turno_inimigos() -> String:
 			var evento = inimigo.turno_especial(player)
 			if evento != "":
 				eventos.append(evento)
+			if inimigo.vivo and inimigo.has_method("proximo_pedestal"):
+				var destino = inimigo.proximo_pedestal()
+				if not inimigos.has(destino):
+					_mover_inimigo(pos_atual, destino, inimigo)
 			continue
 		if inimigo.has_method("pode_agir_contra") and not inimigo.pode_agir_contra(player.grid_pos):
 			continue
@@ -309,6 +328,8 @@ func _nome_inimigo(inimigo: Node) -> String:
 		return "Ouroboros"
 	if inimigo.get_script() == preload("res://sentinela.gd"):
 		return "Sentinela Gemea" if inimigo.exige_parametro else "Sentinela Runica"
+	if inimigo.get_script() == preload("res://arquimago.gd"):
+		return "Arquimago da Corrupcao"
 	if inimigo.has_method("eh_boss_saida") and inimigo.eh_boss_saida():
 		return "Guardiao da Saida"
 	return "Sentinela da Floresta"

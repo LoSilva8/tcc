@@ -40,6 +40,7 @@ func _testar():
 	await _testar_sentinelas()
 	await _testar_parametros()
 	await _testar_selo()
+	await _testar_arquimago()
 	await _testar_continuar_na_torre()
 
 	DirAccess.remove_absolute(ARQUIVO)
@@ -199,7 +200,68 @@ func _testar_selo():
 	verificar(saida.count("Certo!") == 4 and "se abriu" in saida and mapa.selo_aberto, "Funcao certa passa nos 4 testes e abre o Selo: " + saida)
 	verificar("ja esta aberto" in await _abrir_selo(), "Selo aberto nao testa de novo.")
 	await jogo._executar_programa("for i in range(3):\n    mover('direita')")
-	verificar(jogo.fase_4_concluida and "Selo do Retorno concluido" in jogo.output_label.text, "Com o Selo aberto, a saida conclui o andar 3.")
+	verificar("Selo do Retorno concluido" in jogo.output_label.text, "Com o Selo aberto, a saida conclui o andar 3.")
+	verificar(await _esperar_sala(jogo.SALA_ARQUIMAGO), "O andar 3 leva ao Arquimago (sala 16).")
+
+# ─── Sala 16: Arquimago so cai com funcao + laco + if (Tabela 11) ───
+
+const MIRA = "def golpe():\n    for d in ['cima', 'baixo', 'esquerda', 'direita']:\n        if inimigo_a_frente(d):\n            atacar(d)\n            return"
+
+func _direcao_do(chefe: Node) -> String:
+	match chefe.grid_pos - jogo.player.grid_pos:
+		Vector2i(0, -1):
+			return "cima"
+		Vector2i(0, 1):
+			return "baixo"
+		Vector2i(-1, 0):
+			return "esquerda"
+	return "direita"
+
+func _testar_arquimago():
+	var p = jogo.player
+	var gi = jogo.gerenciador_inimigos
+	var mapa = jogo.mapa
+	verificar(p.grid_pos == mapa.NUCLEO_CENTRO and p.hp == p.hp_max, "Mago comeca curado no centro do nucleo.")
+	var chefe = gi.inimigos.values()[0] if gi.inimigos.size() == 1 else null
+	verificar(chefe != null and chefe.get_script() == load("res://arquimago.gd") and chefe.grid_pos in mapa.PEDESTAIS, "Arquimago nasce num pedestal.")
+	if chefe == null:
+		return
+	var texto = jogo.output_label.text
+	verificar("Arquimago da Corrupcao desperta" in texto and "chamada dentro de um laco" in texto, "Anuncio explica a magia completa.")
+	verificar("Arquimago: so cai" in jogo._texto_livro_magias(), "Livro explica o Arquimago.")
+	await _resolver_runa()
+	var vazio = mapa.NUCLEO_CENTRO + Vector2i(0, -1) if chefe.grid_pos != mapa.NUCLEO_CENTRO + Vector2i(0, -1) else mapa.NUCLEO_CENTRO + Vector2i(0, 1)
+	var dir_vazio = "cima" if vazio.y < mapa.NUCLEO_CENTRO.y else "baixo"
+	var saida = await _saida_de(func(): await jogo._on_comando_enviado("mover('" + dir_vazio + "')"))
+	verificar("pedestais do nucleo" in saida and p.grid_pos == mapa.NUCLEO_CENTRO, "Mago nao sai do centro.")
+
+	var antes = chefe.grid_pos
+	saida = await _saida_de(func(): await jogo._on_comando_enviado("atacar('" + _direcao_do(chefe) + "')"))
+	verificar("desfaz golpes soltos" in saida and chefe.selos == 6, "Golpe solto nao fere.")
+	verificar(chefe.grid_pos != antes and chefe.grid_pos in mapa.PEDESTAIS and gi.inimigos.get(chefe.grid_pos) == chefe, "A cada turno ele salta para outro pedestal.")
+
+	await jogo._executar_programa("def golpe_unico(d):\n    if inimigo_a_frente(d):\n        atacar(d)")
+	saida = await _saida_de(func(): await jogo._on_comando_enviado("golpe_unico('" + _direcao_do(chefe) + "')"))
+	verificar("dentro de um laco" in saida and chefe.selos == 6, "Funcao com if, mas sem laco, nao fere.")
+	await jogo._executar_programa("def as_cegas(d):\n    atacar(d)")
+	saida = await _saida_de(func(): await jogo._executar_programa("for i in range(1):\n    as_cegas('" + _direcao_do(chefe) + "')"))
+	verificar("as cegas" in saida and chefe.selos == 6, "Funcao no laco, mas sem if, nao fere.")
+
+	await jogo._executar_programa(MIRA)
+	saida = await _saida_de(func(): await jogo._executar_programa("for i in range(2):\n    golpe()"))
+	verificar("Selo de corrupcao partido" in saida and "se refizeram" in saida and chefe.selos == 6, "Laco que para antes dele: os selos se refazem.")
+
+	p.hp = p.hp_max
+	saida = await _saida_de(func(): await jogo._executar_programa("while inimigos_restantes() > 0:\n    golpe()"))
+	verificar(not chefe.vivo and "ARQUIMAGO DA CORRUPCAO CAIU" in saida, "Funcao com if chamada num while derrota o Arquimago.")
+	verificar("O Arquimago lanca corrupcao" in saida and p.vivo, "Ele lanca corrupcao, mas a luta e vencivel.")
+	verificar(jogo.fase_4_concluida and "Parabens! Voce concluiu PyAdventure." in jogo.output_label.text, "Vencer o Arquimago conclui o jogo.")
+	var salvo = load("res://progresso.gd").new()
+	salvo.caminho = ARQUIVO
+	salvo.carregar()
+	verificar(salvo.jogo_concluido, "Jogo concluido fica salvo.")
+	jogo.menu.atualizar()
+	verificar("concluiu PyAdventure" in jogo.menu.continuar_label.text, "Menu reconhece o jogo concluido.")
 
 # ─── Continuar direto na Torre ──────────────────────────────────────
 

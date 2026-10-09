@@ -62,6 +62,7 @@ var _falhas_seguidas: int = 0
 var _profundidade_cadeia: int = 0
 var _profundidade_laco: int = 0
 var _profundidade_while: int = 0
+var _profundidade_if: int = 0
 var _cancelar: bool = false
 var _multilinha: bool = false
 # Pilha de escopos: um dicionario de variaveis locais por chamada de funcao em andamento.
@@ -98,6 +99,9 @@ func dentro_de_laco() -> bool:
 
 func dentro_de_while() -> bool:
 	return _profundidade_while > 0
+
+func dentro_de_if() -> bool:
+	return _profundidade_if > 0
 
 func dentro_de_funcao() -> bool:
 	return not _locais.is_empty()
@@ -145,6 +149,7 @@ func _preparar_execucao():
 	_profundidade_cadeia = 0
 	_profundidade_laco = 0
 	_profundidade_while = 0
+	_profundidade_if = 0
 	_cancelar = false
 	_locais = []
 	_chamadas = []
@@ -750,7 +755,9 @@ func _exec_if(s: Dictionary) -> void:
 		return
 	if cadeia:
 		_profundidade_cadeia += 1
+	_profundidade_if += 1
 	await _exec_bloco(corpo)
+	_profundidade_if -= 1
 	if cadeia:
 		_profundidade_cadeia -= 1
 

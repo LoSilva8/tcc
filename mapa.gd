@@ -69,6 +69,17 @@ const LAYOUT_SELO = [
 	"##########",
 ]
 const SELO_POS = Vector2i(6, 2)
+const SALA_ARQUIMAGO = 16
+# Nucleo da Biblioteca: o mago no centro e quatro pedestais que so o Arquimago ocupa.
+const LAYOUT_ARQUIMAGO = [
+	"#########",
+	"####.####",
+	"###...###",
+	"####.####",
+	"#########",
+]
+const NUCLEO_CENTRO = Vector2i(4, 2)
+const PEDESTAIS = [Vector2i(4, 1), Vector2i(3, 2), Vector2i(5, 2), Vector2i(4, 3)]
 const LAYOUT_OUROBOROS = [
 	"#########",
 	"#.......#",
@@ -230,6 +241,9 @@ func carregar_sala(indice: int):
 			_sortear_runas_parametros()
 		SALA_SELO:
 			layout = LAYOUT_SELO
+		SALA_ARQUIMAGO:
+			layout = LAYOUT_ARQUIMAGO
+			inicio_pos = NUCLEO_CENTRO
 		_:
 			if indice < layouts.size():
 				layout = layouts[indice]
@@ -270,6 +284,9 @@ func _draw():
 	elif _eh_labirinto():
 		draw_rect(sala_rect.grow(18), Color(0.03, 0.04, 0.045))
 		draw_rect(sala_rect.grow(6), Color(0.9, 0.7, 0.3, 0.4), false, 3.0)
+	elif sala_atual == SALA_ARQUIMAGO:
+		draw_rect(sala_rect.grow(18), Color(0.05, 0.015, 0.05))
+		draw_rect(sala_rect.grow(6), Color(0.95, 0.35, 0.8, 0.45), false, 3.0)
 	elif _eh_torre():
 		draw_rect(sala_rect.grow(18), Color(0.025, 0.03, 0.055))
 		draw_rect(sala_rect.grow(6), Color(0.4, 0.8, 1.0, 0.4), false, 3.0)
@@ -303,6 +320,8 @@ func _draw():
 		_desenhar_comporta()
 	elif sala_atual == SALA_SELO:
 		_desenhar_selo()
+	elif sala_atual == SALA_ARQUIMAGO:
+		_desenhar_nucleo()
 
 	if neblina and player:
 		_desenhar_neblina(linhas, colunas)
@@ -448,6 +467,8 @@ func eh_parede(grid_pos: Vector2i) -> bool:
 		return true
 	if sala_atual == SALA_SELO and grid_pos == SELO_POS and not selo_aberto:
 		return true
+	if sala_atual == SALA_ARQUIMAGO and grid_pos in PEDESTAIS:
+		return true
 	return grid_pos in paredes
 
 func _desenhar_desafios():
@@ -487,6 +508,16 @@ func _desenhar_selo():
 	var largura = fonte.get_string_size("return", HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 	draw_string(fonte, c + Vector2(-largura / 2, 4), "return", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.7, 0.95, 1.0))
 	draw_string(fonte, canto + Vector2(4, 14), "SELO", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.WHITE)
+
+# Circulo magico no centro e um disco runico em cada pedestal.
+func _desenhar_nucleo():
+	var centro = Vector2(NUCLEO_CENTRO) * TAMANHO_CELULA + Vector2(TAMANHO_CELULA, TAMANHO_CELULA) / 2
+	draw_arc(centro, 26, 0.0, TAU, 48, Color(0.95, 0.4, 0.85, 0.55), 2.0)
+	draw_arc(centro, 90, 0.0, TAU, 96, Color(0.95, 0.4, 0.85, 0.25), 2.0)
+	for p in PEDESTAIS:
+		var c = Vector2(p) * TAMANHO_CELULA + Vector2(TAMANHO_CELULA, TAMANHO_CELULA) / 2
+		draw_circle(c, 24, Color(0.16, 0.07, 0.18))
+		draw_arc(c, 24, 0.0, TAU, 40, Color(0.95, 0.4, 0.85, 0.7), 2.0)
 
 func posicao_valida(grid_pos: Vector2i) -> bool:
 	if layout_atual.is_empty():

@@ -136,6 +136,8 @@ func _mover(direcao: String) -> String:
 			return "Bloqueado. Para abrir o bau, digite desafio(bau)."
 		if mapa.sala_atual == 5 and nova_pos == mapa.COMPORTA_POS:
 			return "Bloqueado. Para estabilizar a comporta, digite desafio(comporta)."
+		if mapa.sala_atual == mapa.SALA_ARQUIMAGO and nova_pos in mapa.PEDESTAIS:
+			return "Bloqueado. Os pedestais do nucleo so sustentam o Arquimago."
 		if mapa.sala_atual == mapa.SALA_SELO and nova_pos == mapa.SELO_POS:
 			return "Bloqueado. O Selo do Retorno so abre quando poder_da_runa(runa) devolver o valor certo. Depois digite abrir_selo()."
 		if mapa.has_method("eh_ponte") and mapa.sala_atual == mapa.SALA_PONTE:
@@ -239,19 +241,20 @@ func _fireball_com_variavel(nome_variavel: String, direcao_arg: String) -> Strin
 	
 	for distancia in range(1, FIREBALL_ALCANCE + 1):
 		var alvo = grid_pos + vetor * distancia
-		
-		if mapa and mapa.eh_parede(alvo):
-			_mostrar_fireball(ultimo_ponto)
-			return "Fireball bateu em uma parede antes de atingir um inimigo. Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + "."
-		
-		ultimo_ponto = alvo
-		
+
+		# Inimigo antes de parede: o Arquimago fica sobre pedestais, que bloqueiam o mago.
 		if gerenciador_inimigos.tem_inimigo(alvo):
 			_mostrar_fireball(alvo)
 			var encadeado = interpretador.ultimo_encadeado if interpretador else false
 			var resultado = gerenciador_inimigos.atacar_posicao(alvo, dano, true, nome_variavel, encadeado)
 			return "Fireball lancada com " + nome_variavel + " = " + str(poder) + ". Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + ".\n" + resultado
-	
+
+		if mapa and mapa.eh_parede(alvo):
+			_mostrar_fireball(ultimo_ponto)
+			return "Fireball bateu em uma parede antes de atingir um inimigo. Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + "."
+
+		ultimo_ponto = alvo
+
 	_mostrar_fireball(ultimo_ponto)
 	return "Fireball voou " + str(FIREBALL_ALCANCE) + " casas para " + direcao + ", mas nao atingiu inimigos. Custo: " + str(custo_mana) + " MP. Mana: " + str(mana) + "/" + str(mana_max) + "."
 

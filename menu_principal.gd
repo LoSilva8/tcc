@@ -7,6 +7,7 @@ const Design = preload("res://design.gd")
 
 var main_ref: Node
 var continuar_box: VBoxContainer
+var continuar_label: Label
 var biomas_buttons: Array = []
 var novo_jogo_button: Button
 var aviso_label: Label
@@ -63,7 +64,7 @@ func _construir_ui():
 	continuar_box.add_theme_constant_override("separation", 6)
 	coluna.add_child(continuar_box)
 
-	var continuar_label = Label.new()
+	continuar_label = Label.new()
 	continuar_label.text = "Continuar a partir de:"
 	continuar_label.add_theme_color_override("font_color", Design.TEXT)
 	continuar_box.add_child(continuar_label)
@@ -108,6 +109,7 @@ func atualizar():
 	novo_jogo_button.text = "Novo jogo"
 	aviso_label.visible = false
 	continuar_box.visible = progresso.tem_progresso()
+	continuar_label.text = "Voce concluiu PyAdventure! Pratique a partir de:" if progresso.jogo_concluido else "Continuar a partir de:"
 	for i in range(biomas_buttons.size()):
 		var nome = main_ref.BIOMAS[i]["nome"]
 		var liberado = i <= progresso.bioma_liberado

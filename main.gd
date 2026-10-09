@@ -26,6 +26,7 @@ const SALA_LABIRINTO_CHEFE = 12
 const SALA_TORRE = 13
 const SALA_PARAMETROS = 14
 const SALA_SELO = 15
+const SALA_ARQUIMAGO = 16
 # Resposta que o Selo do Retorno espera de poder_da_runa(runa).
 const PODER_DAS_RUNAS = {"fogo": 3, "gelo": 2, "arcano": 1}
 # Onde cada bioma comeca. O menu principal so oferece os biomas ja liberados.
@@ -58,6 +59,8 @@ var funcoes_desbloqueadas: bool = false
 var progresso: RefCounted
 var menu: CanvasLayer
 var _sala_do_programa: int = -1
+# O final aparece quando termina o programa que derrotou o Arquimago.
+var _vitoria_pendente: bool = false
 var _programa_no_tutorial: bool = false
 var _programa_do_grimorio: bool = false
 var _linha_marcada: int = -1
@@ -666,6 +669,9 @@ func _texto_livro_magias() -> String:
 			linhas.append("  print so mostra na tela; quem precisa do resultado usa return.")
 		if sala_atual == SALA_SELO:
 			linhas.append("  abrir_selo()  o Selo testa poder_da_runa(runa) com varias runas.")
+		if sala_atual == SALA_ARQUIMAGO:
+			linhas.append("  Arquimago: so cai com uma funcao que decide com if, chamada dentro de um laco.")
+			linhas.append("  Sensores: inimigo_a_frente('dir') e inimigos_restantes().")
 		linhas.append("")
 	if not tutorial.esta_ativo() and not grimorio_desbloqueado:
 		linhas.append("Grimorio { }")
@@ -822,6 +828,9 @@ func _iniciar_sala(indice: int):
 	if indice == SALA_TORRE:
 		fase_4_concluida = false
 		player.curar_total()
+
+	if indice == SALA_ARQUIMAGO:
+		player.curar_total()
 	
 	if indice == SALA_PONTE:
 		interpretador.variaveis["passos"] = mapa.passos_ponte.duplicate()
@@ -906,6 +915,10 @@ func _spawnar_inimigos_sala():
 		gerenciador_inimigos.spawnar_ouroboros(Vector2i(4, 3))
 		return
 	
+	if sala_atual == SALA_ARQUIMAGO:
+		gerenciador_inimigos.spawnar_arquimago(mapa.PEDESTAIS[randi() % mapa.PEDESTAIS.size()], mapa.PEDESTAIS)
+		return
+
 	if _em_torre():
 		for pos in mapa.sentinelas:
 			gerenciador_inimigos.spawnar_sentinela(pos, mapa.sentinelas[pos], sala_atual == SALA_PARAMETROS)
@@ -943,6 +956,9 @@ func _on_chefe_derrotado():
 		_adicionar_saida("[chefe] O Oraculo Bifurcado foi silenciado! A saida esta livre.")
 	elif sala_atual == SALA_LABIRINTO_CHEFE:
 		_adicionar_saida("[chefe] O Ouroboros se rompeu! A saida esta livre.")
+	elif sala_atual == SALA_ARQUIMAGO:
+		_vitoria_pendente = true
+		return
 	else:
 		_adicionar_saida("[chefe] O Guardiao de Runas foi destruido! A saida esta livre.")
 	_adicionar_saida("------------------------------")
@@ -1009,8 +1025,7 @@ func _on_chegou_na_saida():
 		if sala_atual == SALA_PARAMETROS:
 			_adicionar_saida("[fase 4] Camara dos Parametros concluida! Uma funcao, varios usos: os parametros mudam o que ela faz a cada chamada.")
 		if sala_atual == SALA_SELO:
-			_concluir_ultimo_andar()
-			return
+			_adicionar_saida("[fase 4] Selo do Retorno concluido! Sua funcao devolveu valores e o Selo usou cada um deles: e isso que return faz.")
 
 	if _em_labirinto() and gerenciador_inimigos.tem_inimigos_vivos():
 		_adicionar_saida("[fase 3] A corrente de Elos ainda bloqueia a passagem.")
@@ -1155,6 +1170,12 @@ func _anunciar_sala_torre(indice: int):
 			_adicionar_saida("Crie def poder_da_runa(runa): que DEVOLVA o poder de cada runa: fogo vale 3, gelo vale 2, arcano vale 1.")
 			_adicionar_saida("return valor: termina a funcao e devolve o valor para quem chamou. print so mostra na tela.")
 			_adicionar_saida("Teste voce mesmo com print(poder_da_runa('gelo')) e, quando estiver pronta, digite abrir_selo().")
+		SALA_ARQUIMAGO:
+			_adicionar_saida("[chefe] O Arquimago da Corrupcao desperta no nucleo da Grande Biblioteca!")
+			_adicionar_saida("A cada turno ele salta para outro dos quatro pedestais ao seu redor, e desfaz golpes soltos.")
+			_adicionar_saida("So uma magia completa o fere: uma funcao (def) que decide com if onde ele esta, chamada dentro de um laco.")
+			_adicionar_saida("Sensores: inimigo_a_frente('cima') diz se ele esta naquela direcao; inimigos_restantes() diz se ele ainda esta de pe.")
+			_adicionar_saida("Se o programa terminar com ele de pe, os selos se refazem. A cada 3 turnos ele lanca corrupcao.")
 	_adicionar_saida("------------------------------")
 
 # Selo do Retorno: testa poder_da_runa(runa) com runas sorteadas e so abre se a
@@ -1207,14 +1228,19 @@ func _abrir_selo():
 	_adicionar_saida("[selo] O Selo do Retorno se abriu: a sua funcao devolveu o valor certo em todos os testes. A saida esta livre.")
 	_adicionar_saida("------------------------------")
 
-# Ultimo andar construido ate agora: os proximos entram aqui.
-func _concluir_ultimo_andar():
+# Fim do jogo: o Arquimago caiu (criterio de conclusao da Torre, Tabela 11).
+func _concluir_torre():
 	if fase_4_concluida:
 		return
 	fase_4_concluida = true
-	_adicionar_saida("[fase 4] Selo do Retorno concluido!")
-	_adicionar_saida("Sua funcao devolveu valores e o Selo usou cada um deles: e isso que return faz.")
-	_adicionar_saida("O Arquimago da Corrupcao ainda esta sendo preparado. Fim da versao jogavel desta etapa.")
+	if progresso.ativo:
+		progresso.jogo_concluido = true
+	_salvar_progresso()
+	_adicionar_saida("[fim] O Arquimago da Corrupcao caiu, derrotado por uma funcao que decide com if, repetida por um laco.")
+	_adicionar_saida("A Grande Biblioteca de Sintaxe volta ao equilibrio, e o elo entre magia e realidade em Algoria esta restaurado.")
+	_adicionar_saida("Voce usou tudo o que aprendeu: variaveis, condicionais, lacos e funcoes.")
+	_adicionar_saida("Parabens! Voce concluiu PyAdventure.")
+	_adicionar_saida("Digite reiniciar() para voltar ao menu e praticar em qualquer bioma.")
 	_adicionar_saida("------------------------------")
 
 func _input(event):
@@ -1400,6 +1426,9 @@ func _ao_agir_programa(resposta: String, pendente_antes: bool) -> bool:
 # Ganchos para mecanicas que reagem ao fim de um programa ou a cada acao
 # (ex.: inimigos que se regeneram quando o laco termina).
 func _fim_de_programa():
+	if _vitoria_pendente:
+		_vitoria_pendente = false
+		_concluir_torre()
 	if gerenciador_inimigos.has_method("fim_de_programa"):
 		var aviso = gerenciador_inimigos.fim_de_programa()
 		if aviso != "":
@@ -1586,6 +1615,7 @@ func _iniciar_run(bioma: int = -1):
 	fase_2_concluida = false
 	fase_3_concluida = false
 	fase_4_concluida = false
+	_vitoria_pendente = false
 	trocando_sala = false
 	player.resetar()
 	interpretador.variaveis.clear()
