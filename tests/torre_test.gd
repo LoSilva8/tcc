@@ -4,6 +4,7 @@ extends SceneTree
 # de dentro de uma funcao do jogador.
 
 const ARQUIVO = "user://progresso_torre_teste.cfg"
+const PASTA_METRICAS = "user://metricas_teste_torre"
 
 var falhas = 0
 var jogo: Node
@@ -35,6 +36,7 @@ func _testar():
 	# Progresso gravado num arquivo de teste, como numa partida iniciada pelo menu.
 	jogo.progresso.caminho = ARQUIVO
 	jogo.progresso.ativo = true
+	jogo.metricas.pasta = PASTA_METRICAS
 
 	await _testar_transicao_labirinto_torre()
 	await _testar_sentinelas()
@@ -44,6 +46,9 @@ func _testar():
 	await _testar_continuar_na_torre()
 
 	DirAccess.remove_absolute(ARQUIVO)
+	for arquivo in DirAccess.get_files_at(PASTA_METRICAS):
+		DirAccess.remove_absolute(PASTA_METRICAS.path_join(arquivo))
+	DirAccess.remove_absolute(PASTA_METRICAS)
 	print("Torre: ", falhas, " falhas.")
 	jogo.queue_free()
 	await process_frame

@@ -71,7 +71,8 @@ func _executar(comando: String) -> String:
 				"  hp <n>             - define HP do jogador\n" + \
 				"  matar_tudo         - remove todos os inimigos da sala\n" + \
 				"  var <nome> <valor> - cria variavel no interpretador\n" + \
-				"  pos <x> <y>        - teleporta o jogador"
+				"  pos <x> <y>        - teleporta o jogador\n" + \
+				"  metricas           - mostra onde ficam os CSV da sessao"
 		
 		"sala":
 			if partes.size() < 2:
@@ -123,6 +124,12 @@ func _executar(comando: String) -> String:
 					return "Sentinela spawnada em " + str(pos)
 				_:
 					return "Tipo invalido. Use: normal, escudo, chefe, elemental, oraculo, elo, ouroboros ou sentinela"
+		
+		"metricas":
+			var m = main_ref.metricas
+			if not m.ativo:
+				return "Metricas desligadas: comece pelo menu (Novo jogo ou Continuar). Pasta: " + ProjectSettings.globalize_path(m.pasta)
+			return "Participante " + m.participante + ", sessao " + m.sessao + "\n" + ProjectSettings.globalize_path(m.caminho_eventos()) + "\n" + ProjectSettings.globalize_path(m.caminho_resumo())
 		
 		"tutorial_skip":
 			if not main_ref.tutorial.esta_ativo():

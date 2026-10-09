@@ -4,6 +4,7 @@ extends SceneTree
 # Cada _abrir_jogo() simula fechar e abrir o jogo de novo.
 
 const ARQUIVO = "user://progresso_teste.cfg"
+const PASTA_METRICAS = "user://metricas_teste_menu"
 
 var falhas = 0
 var jogo: Node
@@ -23,6 +24,9 @@ func _testar():
 	await _testar_novo_jogo_pede_confirmacao()
 	_testar_arquivo_invalido()
 	DirAccess.remove_absolute(ARQUIVO)
+	for arquivo in DirAccess.get_files_at(PASTA_METRICAS):
+		DirAccess.remove_absolute(PASTA_METRICAS.path_join(arquivo))
+	DirAccess.remove_absolute(PASTA_METRICAS)
 	print("Menu e progresso: ", falhas, " falhas.")
 	quit(1 if falhas else 0)
 
@@ -104,6 +108,7 @@ func _abrir_jogo():
 	jogo.interpretador.atraso_entre_acoes = 0.0
 	# Arquivo separado: o teste nunca toca no progresso real do jogador.
 	jogo.progresso.caminho = ARQUIVO
+	jogo.metricas.pasta = PASTA_METRICAS
 	jogo.progresso.carregar()
 	jogo.menu.abrir()
 	await process_frame

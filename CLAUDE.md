@@ -20,7 +20,8 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 
 ## Arquitetura
 - `main.gd`: orquestra as salas (`_iniciar_sala`), HUD, terminal de uma linha, grimório (CodeEdit multi-linha, Ctrl+Enter executa), livro de magias, desbloqueios por bioma e `_iniciar_run(bioma)` (-1 = pelo tutorial).
-- `menu_principal.gd`: tela inicial com Novo jogo e Continuar a partir de um bioma liberado. `reiniciar()` volta para ela.
+- `menu_principal.gd`: tela inicial com Novo jogo, Continuar a partir de um bioma liberado e o campo do código do participante (validação). `reiniciar()` volta para ela.
+- `metricas.gd`: métricas internas da validação (seção 4.4 e Tabela 13 do TCC). Por sessão, dois CSV em `user://metricas` (separador `;`, BOM para o Excel): `<codigo>_<data>_eventos.csv` (cada programa com resultado ok/erro_sintaxe/erro_execucao/bloqueio/interrompido, ações que falharam, desafios, mortes, dicas, salas e biomas) e `_resumo.csv` (uma linha por sala + TOTAL). Só grava após começar pelo menu; testes apontam `metricas.pasta` para uma pasta de teste. Console: `metricas`.
 - `progresso.gd`: progresso permanente em `user://progresso.cfg` (tutorial feito, bioma liberado, grimório, laços). Só grava depois que a partida começa pelo menu, então os testes nunca tocam no save real. XP e nível não são salvos (zeram a cada run).
 - `interpretador.gd`: subconjunto real de Python escrito em GDScript. Texto → tokens (com INDENT/DEDENT) → árvore → execução como corrotina. Cada ação (mover, atacar, fireball) gasta 1 turno. Funções do jogador (`def`, parâmetros, `return`, escopo local) podem agir, por isso rodam antes de avaliar a expressão (`_resolver`). O player lê variáveis por `tem_variavel`/`ler_variavel` para enxergar as locais. `funcoes_liberadas`/`lacos_liberados` vêm do main (`funcoes_desbloqueadas` fica false até o jogador entrar na Torre).
 - `player.gd`: movimento em grid, ataque, fireball (custo 2 + poder, recupera 1 MP por rodada), XP, nível e upgrades.
@@ -43,9 +44,9 @@ O `docs/TCC.md` não vai para o git (o repositório é público e o texto não p
 - Cada bioma ou mecânica nova vem com sua suíte em `tests/<nome>_test.gd`.
 - Ao implementar um requisito do TCC, citar o ID no comentário (ex.: `RF019`).
 
-## Estado atual (2026-10-05)
-Pronto: Floresta com tutorial, Cavernas, Labirinto, grimório multi-linha, interpretador com blocos, fireball/mana, XP e nível, feedback por IA, syntax highlighting, progressão por bioma (grimório liberado a partir das Cavernas, laços a partir do Labirinto, funções na Torre), menu principal, progresso salvo em disco e a Torre das Funções completa, com final de jogo. As 12 suítes de teste passam.
+## Estado atual (2026-10-09)
+Pronto: Floresta com tutorial, Cavernas, Labirinto, grimório multi-linha, interpretador com blocos, fireball/mana, XP e nível, feedback por IA, syntax highlighting, progressão por bioma (grimório liberado a partir das Cavernas, laços a partir do Labirinto, funções na Torre), menu principal, progresso salvo em disco, a Torre das Funções completa com final de jogo e as métricas internas para a validação. As 13 suítes de teste passam.
 
 Falta, comparando com o documento do TCC:
 - RF023 diz `atacar_com(Elemento, 'direção')`, mas o código trocou por `fireball(poder, 'direcao')`. Atualizar o documento ou o código.
-- Preparar a validação do capítulo 4 (pré-teste, pós-teste, questionário MEEGA+, ficha de observação).
+- Preparar os instrumentos da validação do capítulo 4 (pré-teste, pós-teste, MEEGA+, ficha de observação): fica com o resto do grupo.

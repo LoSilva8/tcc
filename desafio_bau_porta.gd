@@ -197,7 +197,11 @@ func _dica():
 func _executar():
 	jogo.ia.cancelar()
 	rascunhos[etapa] = editor.text
+	var resolvido_antes = jogo.mapa.bau_aberto if etapa == 0 else jogo.mapa.porta_aberta
 	feedback.text = executar_codigo(editor.text, etapa)
+	if not resolvido_antes:
+		var resolvido = jogo.mapa.bau_aberto if etapa == 0 else jogo.mapa.porta_aberta
+		jogo.metricas.desafio("bau" if etapa == 0 else "porta", resolvido, editor.text)
 	jogo._adicionar_saida("[desafio] " + feedback.text)
 	var codigo = editor.text
 	var resposta = feedback.text

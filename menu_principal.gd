@@ -10,6 +10,7 @@ var continuar_box: VBoxContainer
 var continuar_label: Label
 var biomas_buttons: Array = []
 var novo_jogo_button: Button
+var participante_edit: LineEdit
 var aviso_label: Label
 var confirmando_novo_jogo = false
 
@@ -60,6 +61,20 @@ func _construir_ui():
 
 	coluna.add_child(HSeparator.new())
 
+	# Validacao (secao 4.4 do TCC): o avaliador digita so um codigo, nunca o nome.
+	var linha_participante = HBoxContainer.new()
+	linha_participante.add_theme_constant_override("separation", 8)
+	coluna.add_child(linha_participante)
+	var rotulo_participante = Label.new()
+	rotulo_participante.text = "Participante:"
+	rotulo_participante.add_theme_color_override("font_color", Design.MUTED)
+	linha_participante.add_child(rotulo_participante)
+	participante_edit = LineEdit.new()
+	participante_edit.placeholder_text = "codigo, ex.: P01 (opcional)"
+	participante_edit.max_length = 20
+	participante_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	linha_participante.add_child(participante_edit)
+
 	continuar_box = VBoxContainer.new()
 	continuar_box.add_theme_constant_override("separation", 6)
 	coluna.add_child(continuar_box)
@@ -90,6 +105,21 @@ func _construir_ui():
 	var sair = _botao("Sair")
 	sair.pressed.connect(func(): get_tree().quit())
 	coluna.add_child(sair)
+
+	var pasta = Button.new()
+	pasta.text = "Abrir pasta das metricas"
+	pasta.flat = true
+	pasta.add_theme_color_override("font_color", Design.MUTED)
+	pasta.pressed.connect(_abrir_pasta_metricas)
+	coluna.add_child(pasta)
+
+func codigo_participante() -> String:
+	return participante_edit.text.strip_edges()
+
+func _abrir_pasta_metricas():
+	var pasta = main_ref.metricas.pasta
+	DirAccess.make_dir_recursive_absolute(pasta)
+	OS.shell_open(ProjectSettings.globalize_path(pasta))
 
 func abrir():
 	atualizar()

@@ -189,7 +189,10 @@ func _dica():
 func _executar():
 	jogo.ia.cancelar()
 	rascunho = editor.text
+	var resolvido_antes = jogo.mapa.comporta_aberta
 	feedback.text = executar_codigo(editor.text)
+	if not resolvido_antes:
+		jogo.metricas.desafio("comporta", jogo.mapa.comporta_aberta, editor.text)
 	jogo._adicionar_saida("[desafio] " + feedback.text)
 	if not jogo.mapa.comporta_aberta:
 		# O cristal oscila: a cadeia precisa funcionar para qualquer estado.

@@ -59,6 +59,9 @@ var _saidas: Array = []
 var _acoes: int = 0
 var _passos: int = 0
 var _falhas_seguidas: int = 0
+# Para as metricas: acoes que falharam e por que o programa foi interrompido.
+var _acoes_falhas: int = 0
+var _interrupcao: String = ""
 var _profundidade_cadeia: int = 0
 var _profundidade_laco: int = 0
 var _profundidade_while: int = 0
@@ -93,6 +96,15 @@ func executar(codigo: String) -> String:
 func cancelar_execucao():
 	if executando:
 		_cancelar = true
+
+# Resumo do ultimo programa, para as metricas da validacao (Tabela 13 do TCC).
+func resumo_execucao() -> Dictionary:
+	return {
+		"erro": _erro_tipo if _erro != "" else "",
+		"interrupcao": _interrupcao,
+		"acoes": _acoes,
+		"acoes_falhas": _acoes_falhas,
+	}
 
 func dentro_de_laco() -> bool:
 	return _profundidade_laco > 0
@@ -146,6 +158,8 @@ func _preparar_execucao():
 	_acoes = 0
 	_passos = 0
 	_falhas_seguidas = 0
+	_acoes_falhas = 0
+	_interrupcao = ""
 	_profundidade_cadeia = 0
 	_profundidade_laco = 0
 	_profundidade_while = 0
@@ -675,6 +689,7 @@ func _exec_stmt(s: Dictionary) -> void:
 		return
 	if _cancelar:
 		_sinal = "parar"
+		_interrupcao = "esc"
 		_escrever("[grimorio] Execucao interrompida.")
 		return
 	emit_signal("linha_executando", s.l)
@@ -870,6 +885,7 @@ func _acao(nome: String, args: Array, linha: int) -> void:
 			await get_tree().create_timer(atraso_entre_acoes).timeout
 		if _cancelar:
 			_sinal = "parar"
+			_interrupcao = "esc"
 			_escrever("[grimorio] Execucao interrompida.")
 			return
 	emit_signal("linha_executando", linha)
@@ -880,6 +896,8 @@ func _acao(nome: String, args: Array, linha: int) -> void:
 		resposta = player.executar_acao(nome, args)
 	if com_turno:
 		_acoes += 1
+		if _acao_falhou(resposta):
+			_acoes_falhas += 1
 	_saidas.append(resposta)
 	var continuar = true
 	if ao_agir.is_valid():
@@ -888,6 +906,7 @@ func _acao(nome: String, args: Array, linha: int) -> void:
 		_falhas_seguidas = _falhas_seguidas + 1 if _acao_falhou(resposta) else 0
 		if _falhas_seguidas >= MAX_FALHAS_SEGUIDAS:
 			_sinal = "parar"
+			_interrupcao = "falhas_seguidas"
 			_escrever("[grimorio] Laco interrompido: a mesma acao falhou " + str(MAX_FALHAS_SEGUIDAS) + " vezes seguidas (ex.: andar contra a parede). Use caminho_livre() ou inimigo_a_frente() na condicao do laco.")
 			return
 	if not continuar and _sinal == "":
@@ -904,6 +923,7 @@ func _parar_laco_infinito():
 	if _sinal == "parar":
 		return
 	_sinal = "parar"
+	_interrupcao = "limite"
 	_escrever("[grimorio] Laco infinito? O programa passou do limite de " + str(MAX_ACOES) + " acoes e foi interrompido. Revise a condicao de parada. Se a sala travou, use reiniciar_sala().")
 
 # ─── Funcoes do jogador e escopo ────────────────────────────────────

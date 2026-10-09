@@ -57,6 +57,7 @@ var grimorio_desbloqueado: bool = false
 var lacos_desbloqueados: bool = false
 var funcoes_desbloqueadas: bool = false
 var progresso: RefCounted
+var metricas: RefCounted
 var menu: CanvasLayer
 var _sala_do_programa: int = -1
 # O final aparece quando termina o programa que derrotou o Arquimago.
@@ -90,6 +91,7 @@ func _ready():
 	add_child(ia)
 	progresso = preload("res://progresso.gd").new()
 	progresso.carregar()
+	metricas = preload("res://metricas.gd").new()
 	player.mapa = mapa
 	mapa.player = player
 	player.gerenciador_inimigos = gerenciador_inimigos
@@ -152,6 +154,8 @@ func novo_jogo():
 	funcoes_desbloqueadas = false
 	_atualizar_botao_grimorio()
 	menu.fechar()
+	metricas.ativo = true
+	metricas.comecar(menu.codigo_participante(), "Tutorial")
 	await _iniciar_run()
 
 func continuar(bioma: int):
@@ -161,9 +165,13 @@ func continuar(bioma: int):
 	funcoes_desbloqueadas = progresso.funcoes_desbloqueadas
 	_atualizar_botao_grimorio()
 	menu.fechar()
-	await _iniciar_run(clampi(bioma, 0, mini(progresso.bioma_liberado, BIOMAS.size() - 1)))
+	var inicio = clampi(bioma, 0, mini(progresso.bioma_liberado, BIOMAS.size() - 1))
+	metricas.ativo = true
+	metricas.comecar(menu.codigo_participante(), BIOMAS[inicio]["nome"])
+	await _iniciar_run(inicio)
 
 func _voltar_ao_menu():
+	metricas.marcar("voltou_ao_menu")
 	interpretador.cancelar_execucao()
 	ia.cancelar()
 	menu.abrir()
@@ -414,6 +422,16 @@ func _atualizar_desbloqueios(indice: int):
 		_adicionar_saida("[funcoes] def e return liberados! Agora voce pode dar nome a um bloco de codigo e usa-lo de novo.")
 	_atualizar_botao_grimorio()
 	_salvar_progresso()
+
+func _nome_bioma(indice: int) -> String:
+	if indice == SALA_TUTORIAL:
+		return "Tutorial"
+	return BIOMAS[_bioma_da_sala(indice)]["nome"]
+
+# Fechar a janela no meio da sessao nao pode perder o tempo da sala atual.
+func _notification(what):
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and metricas:
+		metricas.fechar()
 
 func _bioma_da_sala(indice: int) -> int:
 	var bioma = 0
@@ -798,6 +816,7 @@ func _iniciar_sala(indice: int):
 	ia.cancelar()
 	trocando_sala = false
 	sala_atual = indice
+	metricas.entrar_sala(indice, _nome_bioma(indice))
 	mapa.carregar_sala(indice)
 	if desafios:
 		desafios.reiniciar()
@@ -942,6 +961,7 @@ func _spawnar_inimigos_sala():
 			spawnados += 1
 
 func _on_tutorial_concluido():
+	metricas.marcar("tutorial_concluido")
 	player.xp_habilitado = true
 	if progresso.ativo:
 		progresso.tutorial_concluido = true
@@ -1065,6 +1085,7 @@ func _concluir_fase_1():
 		return
 	
 	fase_1_concluida = true
+	metricas.bioma_concluido(BIOMAS[0]["nome"])
 	_adicionar_saida("[fase 1] Clareira da Floresta concluida!")
 	_adicionar_saida("Voce venceu a primeira fase usando comandos Python.")
 	_adicionar_saida("Uma fenda de cristal se abre no chao... descendo para as Cavernas Condicionais.")
@@ -1098,6 +1119,7 @@ func _concluir_fase_2():
 		return
 	
 	fase_2_concluida = true
+	metricas.bioma_concluido(BIOMAS[1]["nome"])
 	_adicionar_saida("[fase 2] Cavernas Condicionais concluidas!")
 	_adicionar_saida("Sua cadeia if / elif / else respondeu a todos os sinais do Oraculo.")
 	_adicionar_saida("Um corredor dourado se abre: o Labirinto dos Lacos espera.")
@@ -1139,6 +1161,7 @@ func _concluir_fase_3():
 		return
 	
 	fase_3_concluida = true
+	metricas.bioma_concluido(BIOMAS[2]["nome"])
 	_adicionar_saida("[fase 3] Labirinto dos Lacos concluido!")
 	_adicionar_saida("Seu while parou na hora certa: o laco infinito do Ouroboros se rompeu.")
 	_adicionar_saida("Uma escada em espiral surge no centro do labirinto: a Torre das Funcoes espera.")
@@ -1189,9 +1212,11 @@ func _abrir_selo():
 		return
 	var funcao = interpretador.funcoes.get("poder_da_runa")
 	if funcao == null:
+		metricas.desafio("selo", false, "funcao ausente")
 		_adicionar_saida("[selo] O Selo procura a funcao poder_da_runa(runa), mas ela ainda nao existe. Crie com def poder_da_runa(runa): e devolva o poder com return.")
 		return
 	if funcao.params.size() != 1:
+		metricas.desafio("selo", false, "parametros errados")
 		_adicionar_saida("[selo] O Selo chama poder_da_runa com uma runa por vez: a funcao precisa de exatamente 1 parametro. Ex.: def poder_da_runa(runa):")
 		return
 	var testes = PODER_DAS_RUNAS.keys()
@@ -1203,15 +1228,19 @@ func _abrir_selo():
 	_sala_do_programa = sala_atual
 	_programa_no_tutorial = false
 	var aprovada = true
+	var motivo = ""
 	for runa in testes:
 		var chamada = "poder_da_runa('" + runa + "')"
 		var resultado = await interpretador.testar_funcao("poder_da_runa", [runa])
 		var esperado = PODER_DAS_RUNAS[runa]
 		if not resultado.ok:
+			motivo = "erro na funcao"
 			_adicionar_saida("[selo] " + chamada + " parou antes de devolver um valor. Corrija o erro acima e tente de novo.")
 		elif resultado.valor == null:
+			motivo = "devolveu None"
 			_adicionar_saida("[selo] " + chamada + " devolveu None, mas o esperado era " + str(esperado) + ". Faltou return? print so mostra na tela; return devolve o valor.")
 		elif not interpretador._iguais(resultado.valor, esperado):
+			motivo = "valor errado"
 			_adicionar_saida("[selo] " + chamada + " devolveu " + interpretador._repr(resultado.valor) + ", mas o esperado era " + str(esperado) + ".")
 		else:
 			_adicionar_saida("[selo] " + chamada + " devolveu " + str(esperado) + ". Certo!")
@@ -1219,6 +1248,7 @@ func _abrir_selo():
 		aprovada = false
 		break
 	executando_programa = false
+	metricas.desafio("selo", aprovada, motivo)
 	if not aprovada:
 		_adicionar_saida("O Selo continua fechado. Tentar de novo nao custa turno.")
 		_adicionar_saida("------------------------------")
@@ -1233,6 +1263,8 @@ func _concluir_torre():
 	if fase_4_concluida:
 		return
 	fase_4_concluida = true
+	metricas.bioma_concluido(BIOMAS[3]["nome"])
+	metricas.concluir_jogo()
 	if progresso.ativo:
 		progresso.jogo_concluido = true
 	_salvar_progresso()
@@ -1351,6 +1383,7 @@ func _on_comando_enviado(texto: String):
 		return
 	if texto.ends_with(":"):
 		if not grimorio_desbloqueado:
+			metricas.programa(texto, {"erro": "bloqueio", "interrupcao": "", "acoes": 0, "acoes_falhas": 0})
 			_adicionar_saida(">>> " + texto)
 			_adicionar_saida("Blocos de varias linhas usam o grimorio, liberado nas Cavernas Condicionais. Por enquanto, escreva tudo na mesma linha. Ex.: if poder > 2: mover('direita')")
 			return
@@ -1376,6 +1409,7 @@ func _executar_programa(codigo: String) -> String:
 		grimorio_executar.disabled = true
 		grimorio_status.text = "Executando... (Esc para parar)"
 	var resposta = await interpretador.executar(codigo)
+	metricas.programa(codigo, interpretador.resumo_execucao())
 	_limpar_linha_grimorio()
 	executando_programa = false
 	if grimorio_executar:
@@ -1466,6 +1500,7 @@ func _pedir_feedback_erro(codigo: String, resposta: String):
 	if tutorial.esta_ativo():
 		contexto += " Tutorial: " + str(tutorial.etapas[tutorial.etapa_atual]["titulo"])
 	ia.solicitar(codigo, resposta, contexto, func(dica: String, gerada: bool):
+		metricas.dica(gerada)
 		var rotulo = "IA" if gerada else "Dica"
 		_adicionar_saida("[" + rotulo + "] " + dica)
 		if tutorial.esta_ativo():
@@ -1587,6 +1622,7 @@ func _deve_contar_rodada(resposta_jogador: String, escolha_pendente_antes: bool 
 
 func _on_jogador_morreu():
 	ia.cancelar()
+	metricas.morte()
 	_adicionar_saida("[run] Run encerrada. Voce chegou ate a sala " + str(sala_atual + 1) + ".")
 	_adicionar_saida("Digite reiniciar() para voltar ao menu e comecar uma nova run. Os biomas e conceitos liberados continuam salvos.")
 	_adicionar_saida("------------------------------")
