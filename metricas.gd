@@ -9,7 +9,7 @@ extends RefCounted
 const PASTA_PADRAO = "user://metricas"
 const SEP = ";"
 const COLUNAS_EVENTOS = ["participante", "sessao", "tempo_s", "sala", "bioma", "evento", "resultado", "linhas", "acoes", "acoes_falhas", "detalhe"]
-const COLUNAS_RESUMO = ["participante", "sessao", "sala", "bioma", "visitas", "tempo_s", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas", "concluida", "biomas_concluidos", "jogo_concluido"]
+const COLUNAS_RESUMO = ["participante", "sessao", "sala", "bioma", "visitas", "tempo_s", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas", "estrelas", "concluida", "biomas_concluidos", "jogo_concluido"]
 const ESTATISTICAS = ["visitas", "tempo_ms", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas"]
 
 var pasta = PASTA_PADRAO
@@ -53,7 +53,7 @@ func entrar_sala(indice: int, bioma: String):
 	_sala_atual = indice
 	_entrada_ms = Time.get_ticks_msec()
 	if not _salas.has(indice):
-		var nova = {"bioma": bioma, "concluida": false}
+		var nova = {"bioma": bioma, "concluida": false, "estrelas": 0}
 		for chave in ESTATISTICAS:
 			nova[chave] = 0
 		_salas[indice] = nova
@@ -61,11 +61,13 @@ func entrar_sala(indice: int, bioma: String):
 	_salas[indice].visitas += 1
 	_evento("sala_inicio")
 
-# resumo vem de interpretador.resumo_execucao().
-func programa(codigo: String, resumo: Dictionary):
+# resumo vem de interpretador.resumo_execucao(); sala e onde o programa comecou.
+func programa(codigo: String, resumo: Dictionary, sala: int = -1):
 	if not ativo or _sala_atual < 0:
 		return
-	var s = _estatisticas()
+	if not _salas.has(sala):
+		sala = _sala_atual
+	var s = _salas[sala]
 	s.programas += 1
 	s.acoes_falhas += resumo.acoes_falhas
 	var resultado = "ok"
@@ -84,7 +86,15 @@ func programa(codigo: String, resumo: Dictionary):
 				resultado = "interrompido_" + resumo.interrupcao
 				s.interrompidos += 1
 	var linhas = codigo.strip_edges().split("\n").size()
-	_evento("programa", resultado, codigo, str(linhas), str(resumo.acoes), str(resumo.acoes_falhas))
+	_evento("programa", resultado, codigo, str(linhas), str(resumo.acoes), str(resumo.acoes_falhas), sala)
+
+# Estrelas de eficiencia da sala (US04), dadas quando ela e concluida.
+func eficiencia(sala: int, estrelas: int, dados: Dictionary):
+	if not ativo or not _salas.has(sala):
+		return
+	_salas[sala].estrelas = estrelas
+	var detalhe = "programas=%d, turnos=%d, erros=%d, desperdicio=%d" % [dados.programas, dados.turnos, dados.erros, dados.desperdicio]
+	_evento("eficiencia", str(estrelas), detalhe, "", "", "", sala)
 
 func desafio(nome: String, sucesso: bool, detalhe: String = ""):
 	if not ativo or _sala_atual < 0:
@@ -168,9 +178,11 @@ func _sair_da_sala():
 	if _sala_atual >= 0 and _salas.has(_sala_atual):
 		_salas[_sala_atual].tempo_ms += Time.get_ticks_msec() - _entrada_ms
 
-func _evento(evento: String, resultado: String = "", detalhe: String = "", linhas: String = "", acoes: String = "", falhas: String = ""):
-	var bioma = _salas[_sala_atual].bioma if _salas.has(_sala_atual) else ""
-	var sala = str(_sala_atual) if _sala_atual >= 0 else ""
+func _evento(evento: String, resultado: String = "", detalhe: String = "", linhas: String = "", acoes: String = "", falhas: String = "", indice: int = -1):
+	if indice < 0:
+		indice = _sala_atual
+	var bioma = _salas[indice].bioma if _salas.has(indice) else ""
+	var sala = str(indice) if indice >= 0 else ""
 	var tempo = str(int((Time.get_ticks_msec() - _inicio_ms) / 1000))
 	var campos = [participante, sessao, tempo, sala, bioma, evento, resultado, linhas, acoes, falhas, detalhe]
 	var arquivo = FileAccess.open(_arquivo_eventos, FileAccess.READ_WRITE)
@@ -185,11 +197,12 @@ func _salvar_resumo():
 	if arquivo == null:
 		return
 	var texto = "﻿" + SEP.join(COLUNAS_RESUMO) + "\n"
-	var total = {"visitas": 0}
+	var total = {"visitas": 0, "estrelas": 0}
 	for chave in ESTATISTICAS:
 		total[chave] = 0
 	for indice in _ordem_salas:
 		var s = _salas[indice]
+		total.estrelas += s.estrelas
 		var tempo = s.tempo_ms + (Time.get_ticks_msec() - _entrada_ms if indice == _sala_atual else 0)
 		for chave in ESTATISTICAS:
 			total[chave] += tempo if chave == "tempo_ms" else s[chave]
@@ -203,7 +216,7 @@ func _linha_resumo(sala: String, bioma: String, s: Dictionary, tempo_ms: int, co
 	return [participante, sessao, sala, bioma, str(s.visitas), str(int(tempo_ms / 1000)), str(s.programas),
 		str(s.erros_sintaxe), str(s.erros_execucao), str(s.bloqueios), str(s.interrompidos), str(s.acoes_falhas),
 		str(s.desafio_tentativas), str(s.desafio_falhas), str(s.reinicios), str(s.mortes), str(s.dicas),
-		concluida, biomas, jogo]
+		str(s.estrelas) if s.estrelas > 0 else "", concluida, biomas, jogo]
 
 func _linha_csv(campos: Array) -> String:
 	var partes: Array = []

@@ -62,6 +62,10 @@ var menu: CanvasLayer
 var _sala_do_programa: int = -1
 # O final aparece quando termina o programa que derrotou o Arquimago.
 var _vitoria_pendente: bool = false
+# Eficiencia do codigo por sala (US04): programas, turnos, erros e acoes
+# desperdicadas, avaliados em estrelas quando a sala e concluida.
+var _eficiencia: Dictionary = {}
+var _sala_avaliada: int = -1
 var _programa_no_tutorial: bool = false
 var _programa_do_grimorio: bool = false
 var _linha_marcada: int = -1
@@ -815,6 +819,9 @@ func _atualizar_levelup_visibilidade():
 func _iniciar_sala(indice: int):
 	ia.cancelar()
 	trocando_sala = false
+	if _sala_avaliada >= 0 and _sala_avaliada != indice and _sala_avaliada != SALA_TUTORIAL:
+		_relatar_eficiencia(_sala_avaliada)
+	_sala_avaliada = indice
 	sala_atual = indice
 	metricas.entrar_sala(indice, _nome_bioma(indice))
 	mapa.carregar_sala(indice)
@@ -1258,11 +1265,61 @@ func _abrir_selo():
 	_adicionar_saida("[selo] O Selo do Retorno se abriu: a sua funcao devolveu o valor certo em todos os testes. A saida esta livre.")
 	_adicionar_saida("------------------------------")
 
+# ─── Eficiencia do codigo (US04) ─────────────────────────────────────
+
+func _dados_eficiencia(sala: int) -> Dictionary:
+	if not _eficiencia.has(sala):
+		_eficiencia[sala] = {"programas": 0, "turnos": 0, "erros": 0, "desperdicio": 0, "estrelas": 0}
+	return _eficiencia[sala]
+
+func _somar_eficiencia(sala: int, resumo: Dictionary):
+	if resumo.erro == "bloqueio":
+		return  # tentar um conceito ainda bloqueado nao e erro do aluno
+	var dados = _dados_eficiencia(sala)
+	dados.programas += 1
+	dados.turnos += resumo.acoes
+	dados.desperdicio += resumo.acoes_falhas
+	if resumo.erro != "" or resumo.interrupcao in ["limite", "falhas_seguidas"]:
+		dados.erros += 1
+
+# Estrelas: 1 por concluir a sala, +1 sem erros de Python, +1 sem acoes desperdicadas.
+# A troca de sala espera o programa terminar, entao os dados ja estao completos.
+func _relatar_eficiencia(sala: int):
+	var dados = _dados_eficiencia(sala)
+	if dados.programas == 0:
+		return  # sala pulada (ex.: console de debug): nao ha codigo para avaliar
+	var estrelas = 1 + (1 if dados.erros == 0 else 0) + (1 if dados.desperdicio == 0 else 0)
+	_eficiencia[sala].estrelas = estrelas
+	metricas.eficiencia(sala, estrelas, dados)
+	var marcas = "*".repeat(estrelas) + "-".repeat(3 - estrelas)
+	_adicionar_saida("[eficiencia] Sala concluida: [" + marcas + "] " + str(estrelas) + " de 3 estrelas")
+	var por_programa = float(dados.turnos) / dados.programas if dados.programas > 0 else 0.0
+	_adicionar_saida("%d programas, %d turnos (%.1f acoes por programa). Erros de Python: %d. Acoes desperdicadas: %d." % [dados.programas, dados.turnos, por_programa, dados.erros, dados.desperdicio])
+	if dados.erros > 0:
+		_adicionar_saida("Proxima estrela: teste o codigo por partes para chegar sem erros de sintaxe ou de execucao.")
+	if dados.desperdicio > 0:
+		var sensores = " Antes de agir, consulte caminho_livre() e inimigo_a_frente()." if lacos_desbloqueados else ""
+		_adicionar_saida("Proxima estrela: planeje para nenhuma acao falhar (parede, ataque no vazio, mana insuficiente)." + sensores)
+	if lacos_desbloqueados and dados.programas > 1 and por_programa < 2.0:
+		_adicionar_saida("Dica: um laco ou uma funcao faz varias acoes em um so programa.")
+	_adicionar_saida("------------------------------")
+
+func _relatar_eficiencia_da_run():
+	var total = 0
+	var salas = 0
+	for sala in _eficiencia:
+		if _eficiencia[sala].estrelas > 0:
+			total += _eficiencia[sala].estrelas
+			salas += 1
+	_adicionar_saida("[eficiencia] Run completa: %d de %d estrelas em %d salas." % [total, salas * 3, salas])
+
 # Fim do jogo: o Arquimago caiu (criterio de conclusao da Torre, Tabela 11).
 func _concluir_torre():
 	if fase_4_concluida:
 		return
 	fase_4_concluida = true
+	_relatar_eficiencia(SALA_ARQUIMAGO)
+	_relatar_eficiencia_da_run()
 	metricas.bioma_concluido(BIOMAS[3]["nome"])
 	metricas.concluir_jogo()
 	if progresso.ativo:
@@ -1409,7 +1466,9 @@ func _executar_programa(codigo: String) -> String:
 		grimorio_executar.disabled = true
 		grimorio_status.text = "Executando... (Esc para parar)"
 	var resposta = await interpretador.executar(codigo)
-	metricas.programa(codigo, interpretador.resumo_execucao())
+	var resumo = interpretador.resumo_execucao()
+	metricas.programa(codigo, resumo, _sala_do_programa)
+	_somar_eficiencia(_sala_do_programa, resumo)
 	_limpar_linha_grimorio()
 	executando_programa = false
 	if grimorio_executar:
@@ -1652,6 +1711,8 @@ func _iniciar_run(bioma: int = -1):
 	fase_3_concluida = false
 	fase_4_concluida = false
 	_vitoria_pendente = false
+	_eficiencia = {}
+	_sala_avaliada = -1
 	trocando_sala = false
 	player.resetar()
 	interpretador.variaveis.clear()
