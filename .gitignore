@@ -7,3 +7,6 @@
 
 # Texto do TCC fica so local: o repositorio e publico (gere com docs/docx2md.py)
 docs/TCC.md
+
+# Executavel exportado (gerar de novo com o preset "Windows Desktop")
+build/
