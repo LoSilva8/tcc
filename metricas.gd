@@ -9,8 +9,8 @@ extends RefCounted
 const PASTA_PADRAO = "user://metricas"
 const SEP = ";"
 const COLUNAS_EVENTOS = ["participante", "sessao", "tempo_s", "sala", "bioma", "evento", "resultado", "linhas", "acoes", "acoes_falhas", "detalhe"]
-const COLUNAS_RESUMO = ["participante", "sessao", "sala", "bioma", "visitas", "tempo_s", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas", "estrelas", "concluida", "biomas_concluidos", "jogo_concluido"]
-const ESTATISTICAS = ["visitas", "tempo_ms", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas"]
+const COLUNAS_RESUMO = ["participante", "sessao", "sala", "bioma", "visitas", "tempo_s", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas", "dicas_pedidas", "estrelas", "concluida", "biomas_concluidos", "jogo_concluido"]
+const ESTATISTICAS = ["visitas", "tempo_ms", "programas", "erros_sintaxe", "erros_execucao", "bloqueios", "interrompidos", "acoes_falhas", "desafio_tentativas", "desafio_falhas", "reinicios", "mortes", "dicas", "dicas_pedidas"]
 
 var pasta = PASTA_PADRAO
 # So grava depois que a partida comeca pelo menu: os testes instanciam o jogo
@@ -117,6 +117,17 @@ func dica(gerada_por_ia: bool):
 	_estatisticas().dicas += 1
 	_evento("dica", "ia" if gerada_por_ia else "local")
 
+# Dicas de dicas.gd: pedidas com dica() ou mostradas sozinhas apos uma falha de regra.
+func dica_sala(topico: String, nivel: int, pedida: bool):
+	if not ativo or _sala_atual < 0:
+		return
+	var s = _estatisticas()
+	if pedida:
+		s.dicas_pedidas += 1
+	else:
+		s.dicas += 1
+	_evento("dica_pedida" if pedida else "dica_automatica", str(nivel), topico)
+
 func marcar(evento: String, detalhe: String = ""):
 	if ativo:
 		_evento(evento, "", detalhe)
@@ -215,7 +226,7 @@ func _salvar_resumo():
 func _linha_resumo(sala: String, bioma: String, s: Dictionary, tempo_ms: int, concluida: String, biomas: String, jogo: String) -> Array:
 	return [participante, sessao, sala, bioma, str(s.visitas), str(int(tempo_ms / 1000)), str(s.programas),
 		str(s.erros_sintaxe), str(s.erros_execucao), str(s.bloqueios), str(s.interrompidos), str(s.acoes_falhas),
-		str(s.desafio_tentativas), str(s.desafio_falhas), str(s.reinicios), str(s.mortes), str(s.dicas),
+		str(s.desafio_tentativas), str(s.desafio_falhas), str(s.reinicios), str(s.mortes), str(s.dicas), str(s.dicas_pedidas),
 		str(s.estrelas) if s.estrelas > 0 else "", concluida, biomas, jogo]
 
 func _linha_csv(campos: Array) -> String:

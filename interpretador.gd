@@ -32,7 +32,7 @@ const MAX_CHAMADAS_ANINHADAS = 30
 const NOMES_DO_JOGO = ["mover", "atacar", "fireball", "escolher", "print", "range", "len", "str",
 	"int", "abs", "min", "max", "caminho_livre", "inimigo_a_frente", "inimigos_restantes",
 	"minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta", "reiniciar",
-	"reiniciar_sala", "desafio", "atacar_com", "abrir_selo"]
+	"reiniciar_sala", "desafio", "atacar_com", "abrir_selo", "dica"]
 
 var variaveis: Dictionary = {}
 # Funcoes criadas com def. Como as variaveis, continuam valendo nos proximos comandos.
@@ -1235,7 +1235,7 @@ func _chamar_funcao(no: Dictionary):
 		"abrir_bau", "abrir_porta", "abrir_comporta":
 			_definir_erro(nome + "() so funciona dentro do desafio: fique ao lado do objeto e digite desafio(...).", no.l, "execucao")
 			return null
-		"reiniciar", "reiniciar_sala", "abrir_selo":
+		"reiniciar", "reiniciar_sala", "abrir_selo", "dica":
 			_definir_erro("Digite " + nome + "() sozinho no terminal, fora de programas.", no.l, "execucao")
 			return null
 	var args: Array = []

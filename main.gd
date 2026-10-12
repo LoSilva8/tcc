@@ -39,7 +39,7 @@ const BIOMAS = [
 const LIMITE_HISTORICO = 5
 const ATRASO_ENTRE_ACOES = 0.22
 const PALAVRAS_PYTHON = ["if", "elif", "else", "for", "while", "in", "not", "and", "or", "break", "continue", "pass", "True", "False", "None", "def", "return"]
-const FUNCOES_DO_JOGO = ["mover", "atacar", "fireball", "print", "range", "len", "str", "int", "abs", "min", "max", "escolher", "caminho_livre", "inimigo_a_frente", "inimigos_restantes", "minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta", "abrir_selo"]
+const FUNCOES_DO_JOGO = ["mover", "atacar", "fireball", "print", "range", "len", "str", "int", "abs", "min", "max", "escolher", "caminho_livre", "inimigo_a_frente", "inimigos_restantes", "minha_vida", "minha_mana", "abrir_bau", "abrir_porta", "abrir_comporta", "abrir_selo", "dica"]
 
 var historico: Array = []
 var historico_index: int = -1
@@ -58,6 +58,12 @@ var lacos_desbloqueados: bool = false
 var funcoes_desbloqueadas: bool = false
 var progresso: RefCounted
 var metricas: RefCounted
+var dicas: RefCounted
+# Programas com problema (erro, acao que falhou, regra nao aceita) desde o ultimo
+# avanco: a cada 3, o jogo lembra que dica() existe.
+var _tentativas_sem_avanco: int = 0
+var _topico_das_tentativas: String = ""
+var _falhou_regra_no_programa: bool = false
 var menu: CanvasLayer
 var _sala_do_programa: int = -1
 # O final aparece quando termina o programa que derrotou o Arquimago.
@@ -96,6 +102,7 @@ func _ready():
 	progresso = preload("res://progresso.gd").new()
 	progresso.carregar()
 	metricas = preload("res://metricas.gd").new()
+	dicas = preload("res://dicas.gd").new()
 	player.mapa = mapa
 	mapa.player = player
 	player.gerenciador_inimigos = gerenciador_inimigos
@@ -717,6 +724,8 @@ func _texto_livro_magias() -> String:
 	linhas.append("  Encerra a run e volta ao menu principal.")
 	linhas.append("  reiniciar_sala()")
 	linhas.append("  Recomeca so a sala atual (vida, mana e XP ficam).")
+	linhas.append("  dica()")
+	linhas.append("  Ajuda sobre o que fazer agora. Cada pedido explica um pouco mais.")
 	linhas.append("")
 	linhas.append("Novos comandos aparecem aqui quando forem ensinados.")
 	return "\n".join(linhas)
@@ -1257,6 +1266,7 @@ func _abrir_selo():
 	executando_programa = false
 	metricas.desafio("selo", aprovada, motivo)
 	if not aprovada:
+		_contar_tentativa_sem_avanco()
 		_adicionar_saida("O Selo continua fechado. Tentar de novo nao custa turno.")
 		_adicionar_saida("------------------------------")
 		return
@@ -1264,6 +1274,83 @@ func _abrir_selo():
 	mapa.queue_redraw()
 	_adicionar_saida("[selo] O Selo do Retorno se abriu: a sua funcao devolveu o valor certo em todos os testes. A saida esta livre.")
 	_adicionar_saida("------------------------------")
+
+# ─── Dicas progressivas (dica()) ─────────────────────────────────────
+
+# O que o aluno precisa resolver agora: depende da sala e do que ja foi feito nela.
+func _topico_dica() -> String:
+	var vivos = gerenciador_inimigos.tem_inimigos_vivos()
+	match sala_atual:
+		SALA_FLORESTA:
+			if not mapa.bau_aberto:
+				return "floresta_bau"
+			if not mapa.porta_aberta:
+				return "floresta_porta"
+			if gerenciador_inimigos.boss_saida_vivo():
+				return "floresta_guardiao"
+			return "floresta_inimigos" if vivos else "saida"
+		SALA_CAVERNA:
+			if not mapa.comporta_aberta:
+				return "caverna_comporta"
+			return "caverna_ecos" if vivos else "saida"
+		6, 7:
+			return "caverna_ecos" if vivos else "saida"
+		SALA_CAVERNA_CHEFE:
+			return "oraculo" if gerenciador_inimigos.chefe_caverna_vivo() else "saida"
+		SALA_LABIRINTO:
+			return "nevoa"
+		SALA_ELOS:
+			return "elos" if vivos else "saida"
+		SALA_PONTE:
+			return "ponte"
+		SALA_LABIRINTO_CHEFE:
+			return "ouroboros" if gerenciador_inimigos.chefe_labirinto_vivo() else "saida"
+		SALA_TORRE:
+			return "sentinelas" if vivos else "saida"
+		SALA_PARAMETROS:
+			return "gemeas" if vivos else "saida"
+		SALA_SELO:
+			return "selo" if not mapa.selo_aberto else "saida"
+		SALA_ARQUIMAGO:
+			return "arquimago"
+	return "geral"
+
+func _mostrar_dica_pedida():
+	if tutorial.esta_ativo():
+		var etapa = tutorial.etapas[tutorial.etapa_atual]
+		var texto = tutorial._formatar_texto_tutorial(str(etapa["dica"])) if str(etapa["dica"]) != "" else tutorial.comando_label.text
+		metricas.dica_sala("tutorial", 1, true)
+		_adicionar_saida("[dica] " + texto)
+		_adicionar_saida("------------------------------")
+		return
+	var topico = _topico_dica()
+	var dica = dicas.proxima(topico)
+	metricas.dica_sala(topico, dica.nivel, true)
+	_adicionar_saida("[dica " + str(dica.nivel) + "/3] " + dica.texto)
+	if dica.nivel < 3:
+		_adicionar_saida("Digite dica() de novo para uma ajuda mais detalhada.")
+	_adicionar_saida("------------------------------")
+
+# A primeira vez que a regra da sala recusa o que o aluno fez, o primeiro degrau
+# aparece sozinho (a IA so reage a erros de Python).
+func _observar_falha_de_regra(resposta: String):
+	if not dicas.eh_falha_de_regra(resposta):
+		return
+	_falhou_regra_no_programa = true
+	var topico = _topico_dica()
+	var texto = dicas.empurrao(topico)
+	if texto != "":
+		metricas.dica_sala(topico, 1, false)
+		_adicionar_saida("[dica 1/3] " + texto + " Digite dica() para mais ajuda.")
+
+func _contar_tentativa_sem_avanco():
+	var topico = _topico_dica()
+	if topico != _topico_das_tentativas:
+		_topico_das_tentativas = topico
+		_tentativas_sem_avanco = 0
+	_tentativas_sem_avanco += 1
+	if _tentativas_sem_avanco % 3 == 0:
+		_adicionar_saida("[dica] Travou? Digite dica() para uma ajuda sobre o que fazer agora.")
 
 # ─── Eficiencia do codigo (US04) ─────────────────────────────────────
 
@@ -1430,6 +1517,11 @@ func _on_comando_enviado(texto: String):
 		_preparar_proximo_comando()
 		await _abrir_selo()
 		return
+	if texto == "dica()":
+		_adicionar_saida(">>> " + texto)
+		_preparar_proximo_comando()
+		_mostrar_dica_pedida()
+		return
 	if texto.begins_with("desafio"):
 		_adicionar_saida(">>> " + texto)
 		var gerenciador_desafio = desafios_caverna if sala_atual == SALA_CAVERNA else desafios
@@ -1465,10 +1557,12 @@ func _executar_programa(codigo: String) -> String:
 	if _programa_do_grimorio:
 		grimorio_executar.disabled = true
 		grimorio_status.text = "Executando... (Esc para parar)"
+	_falhou_regra_no_programa = false
 	var resposta = await interpretador.executar(codigo)
 	var resumo = interpretador.resumo_execucao()
 	metricas.programa(codigo, resumo, _sala_do_programa)
 	_somar_eficiencia(_sala_do_programa, resumo)
+	var com_problema = resumo.erro in ["sintaxe", "execucao"] or resumo.interrupcao in ["limite", "falhas_seguidas"] or resumo.acoes_falhas > 0 or _falhou_regra_no_programa
 	_limpar_linha_grimorio()
 	executando_programa = false
 	if grimorio_executar:
@@ -1481,6 +1575,8 @@ func _executar_programa(codigo: String) -> String:
 	else:
 		_fim_de_programa()
 	_pedir_feedback_erro(codigo, resposta)
+	if com_problema:
+		_contar_tentativa_sem_avanco()
 	return resposta
 
 func _eco_programa(codigo: String):
@@ -1497,6 +1593,7 @@ func _ao_escrever_programa(texto: String):
 
 func _ao_agir_programa(resposta: String, pendente_antes: bool) -> bool:
 	_adicionar_saida(resposta)
+	_observar_falha_de_regra(resposta)
 	if _programa_no_tutorial:
 		if _deve_contar_rodada(resposta):
 			_recuperar_mana_fim_rodada()
@@ -1526,10 +1623,13 @@ func _fim_de_programa():
 		var aviso = gerenciador_inimigos.fim_de_programa()
 		if aviso != "":
 			_adicionar_saida(aviso)
+			_observar_falha_de_regra(aviso)
 	if sala_atual == SALA_PONTE and player.vivo and mapa.eh_ponte(player.grid_pos):
 		player.grid_pos = mapa.inicio_pos
 		player._sincronizar_posicao()
-		_adicionar_saida("[ponte] O laco terminou no meio da ponte e ela se desfez: voce voltou ao inicio. Atravesse a ponte inteira em um unico laco.")
+		var desfeita = "[ponte] O laco terminou no meio da ponte e ela se desfez: voce voltou ao inicio. Atravesse a ponte inteira em um unico laco."
+		_adicionar_saida(desfeita)
+		_observar_falha_de_regra(desfeita)
 
 func _apos_acao_no_mapa():
 	if mapa.neblina:
