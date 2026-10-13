@@ -13,6 +13,7 @@ func verificar(condicao: bool, descricao: String):
 func _testar():
 	var jogo = load("res://main.tscn").instantiate()
 	root.add_child(jogo)
+	jogo.mapa.variar_salas = false  # este teste usa as posicoes fixas dos inimigos e da saida
 	jogo.ia.habilitado = false
 	await process_frame
 	await process_frame

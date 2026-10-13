@@ -88,6 +88,7 @@ func _testar_salas_e_desafios():
 	desafio._executar()
 	desafio._fechar()
 	jogo.player._receber_dano(jogo.player.hp, "Teste.")
+	verificar("[run] Run encerrada em Floresta dos Primeiros Passos." in jogo.output_label.text, "Mensagem de derrota diz o bioma, nao o numero da sala.")
 
 	var eventos = "\n".join(_linhas(m.caminho_eventos()))
 	verificar(";tutorial_concluido;" in eventos, "Fim do tutorial registrado.")

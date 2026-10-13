@@ -89,6 +89,10 @@ const LAYOUT_OUROBOROS = [
 	"#......E#",
 	"#########",
 ]
+# Sorteio nas salas de layout fixo (RF008 / RF036): posicao dos inimigos e, nas
+# galerias das Cavernas, o formato e a saida. Testes que dependem de posicoes
+# fixas desligam com variar_salas = false.
+var variar_salas = true
 var bau_aberto = false
 var porta_aberta = false
 var comporta_aberta = false
@@ -231,6 +235,8 @@ func carregar_sala(indice: int):
 			layout = _gerar_ponte()
 		SALA_OUROBOROS:
 			layout = LAYOUT_OUROBOROS
+		6, 7:
+			layout = _gerar_galeria() if variar_salas else layouts[indice]
 		SALA_SENTINELAS:
 			layout = LAYOUT_SENTINELAS
 			for pos in SENTINELAS_POS:
@@ -539,6 +545,57 @@ func _eh_caverna() -> bool:
 
 func _eh_labirinto() -> bool:
 	return sala_atual >= SALA_NEBLINA and sala_atual <= SALA_OUROBOROS
+
+# ─── Sorteio das salas fixas (RF008 / RF036) ────────────────────────
+
+const FORMATOS_GALERIA = [2, 3, 4]  # indices em layouts; as galerias 6 e 7 sao copias deles
+const PASSOS = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+
+# Galeria das Cavernas: um dos tres formatos, com a saida numa casa longe do inicio.
+func _gerar_galeria() -> Array:
+	var grade: Array = []
+	for linha in layouts[FORMATOS_GALERIA[randi() % FORMATOS_GALERIA.size()]]:
+		grade.append(linha.replace("E", "."))
+	var livre = func(p: Vector2i): return p.y >= 0 and p.y < grade.size() and p.x >= 0 and p.x < grade[p.y].length() and grade[p.y][p.x] != "#"
+	var dist = _distancias(inicio_pos, livre)
+	var mais_longe = 0
+	for p in dist:
+		mais_longe = maxi(mais_longe, dist[p])
+	var candidatas: Array = []
+	for p in dist:
+		if dist[p] >= maxi(3, int(mais_longe * 0.6)):
+			candidatas.append(p)
+	var saida: Vector2i = candidatas[randi() % candidatas.size()]
+	var linha = grade[saida.y]
+	grade[saida.y] = linha.substr(0, saida.x) + "E" + linha.substr(saida.x + 1)
+	return grade
+
+# Distancia em passos a partir de origem, andando so por casas onde livre(p) e true
+# (livre tambem cuida dos limites da grade).
+func _distancias(origem: Vector2i, livre: Callable) -> Dictionary:
+	var dist = {origem: 0}
+	var fila: Array = [origem]
+	var i = 0
+	while i < fila.size():
+		var atual: Vector2i = fila[i]
+		i += 1
+		for passo in PASSOS:
+			var prox = atual + passo
+			if dist.has(prox) or not livre.call(prox):
+				continue
+			dist[prox] = dist[atual] + 1
+			fila.append(prox)
+	return dist
+
+# Casas alcancaveis a pelo menos `minimo` passos do inicio, fora da saida e de `evitar`.
+func sortear_casas(quantidade: int, minimo: int, evitar: Array = []) -> Array:
+	var dist = _distancias(inicio_pos, posicao_valida)
+	var candidatas: Array = []
+	for p in dist:
+		if dist[p] >= minimo and p != saida_pos and not p in evitar:
+			candidatas.append(p)
+	candidatas.shuffle()
+	return candidatas.slice(0, quantidade)
 
 func _eh_torre() -> bool:
 	return sala_atual >= SALA_SENTINELAS

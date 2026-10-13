@@ -72,6 +72,10 @@ var _vitoria_pendente: bool = false
 # desperdicadas, avaliados em estrelas quando a sala e concluida.
 var _eficiencia: Dictionary = {}
 var _sala_avaliada: int = -1
+var estrelas_panel: PanelContainer
+var estrelas_desenho: Control
+var estrelas_texto: Label
+var _estrelas_tween: Tween
 var _programa_no_tutorial: bool = false
 var _programa_do_grimorio: bool = false
 var _linha_marcada: int = -1
@@ -132,6 +136,7 @@ func _ready():
 	
 	_construir_hud_recursos_ui()
 	_construir_levelup_ui()
+	_construir_painel_estrelas()
 	_construir_livro_magias_ui()
 	_construir_grimorio_ui()
 	desafios = preload("res://desafio_bau_porta.gd").new()
@@ -286,6 +291,73 @@ func _reposicionar_hud_recursos():
 	resource_hud.offset_top = 12
 	resource_hud.offset_bottom = 52
 
+# As 3 estrelas da eficiencia (US04), desenhadas sem depender da fonte.
+class EstrelasDesenho extends Control:
+	var cheias := 0
+
+	func _draw():
+		for i in range(3):
+			var centro = Vector2(size.x / 2 + (i - 1) * 44, size.y / 2)
+			var pontos = PackedVector2Array()
+			for k in range(10):
+				var raio = 18.0 if k % 2 == 0 else 7.5
+				var angulo = -PI / 2 + k * PI / 5
+				pontos.append(centro + Vector2(cos(angulo), sin(angulo)) * raio)
+			draw_colored_polygon(pontos, Color(1.0, 0.82, 0.3) if i < cheias else Color(0.28, 0.3, 0.36))
+
+# Painel que aparece por alguns segundos ao concluir uma sala: o relatorio no
+# terminal rola para cima quando a proxima sala e anunciada.
+func _construir_painel_estrelas():
+	estrelas_panel = PanelContainer.new()
+	estrelas_panel.name = "EstrelasPanel"
+	estrelas_panel.anchor_left = 0.5
+	estrelas_panel.anchor_right = 0.5
+	estrelas_panel.offset_left = -150
+	estrelas_panel.offset_right = 150
+	estrelas_panel.offset_top = 70  # abaixo da faixa do HUD, que ocupa o canto superior direito
+	estrelas_panel.visible = false
+	estrelas_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	estrelas_panel.add_theme_stylebox_override("panel", _estilo_hud(Color(0.08, 0.09, 0.12, 0.94), Color(1.0, 0.82, 0.3, 0.6), 10))
+	ui_root.add_child(estrelas_panel)
+
+	var coluna = VBoxContainer.new()
+	coluna.add_theme_constant_override("separation", 2)
+	estrelas_panel.add_child(coluna)
+
+	var titulo = Label.new()
+	titulo.text = "Sala concluida"
+	titulo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	titulo.add_theme_color_override("font_color", Color(1, 0.88, 0.5))
+	titulo.add_theme_font_size_override("font_size", 16)
+	coluna.add_child(titulo)
+
+	estrelas_desenho = EstrelasDesenho.new()
+	estrelas_desenho.custom_minimum_size = Vector2(150, 42)
+	coluna.add_child(estrelas_desenho)
+
+	estrelas_texto = Label.new()
+	estrelas_texto.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	estrelas_texto.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	estrelas_texto.add_theme_color_override("font_color", Color(0.86, 0.9, 0.95))
+	estrelas_texto.add_theme_font_size_override("font_size", 13)
+	coluna.add_child(estrelas_texto)
+
+func _mostrar_estrelas(estrelas: int, dados: Dictionary):
+	estrelas_desenho.cheias = estrelas
+	estrelas_desenho.queue_redraw()
+	var faltou: Array = []
+	if dados.erros > 0:
+		faltou.append("erros de Python")
+	if dados.desperdicio > 0:
+		faltou.append("acoes desperdicadas")
+	estrelas_texto.text = "%d de 3 estrelas" % estrelas + ("" if faltou.is_empty() else "\nFaltou: sem " + " e sem ".join(faltou))
+	estrelas_panel.visible = true
+	if _estrelas_tween:
+		_estrelas_tween.kill()
+	_estrelas_tween = create_tween()
+	_estrelas_tween.tween_interval(5.0)
+	_estrelas_tween.tween_callback(func(): estrelas_panel.visible = false)
+
 func _construir_levelup_ui():
 	levelup_panel = PanelContainer.new()
 	levelup_panel.name = "LevelUpPanel"
@@ -433,6 +505,9 @@ func _atualizar_desbloqueios(indice: int):
 		_adicionar_saida("[funcoes] def e return liberados! Agora voce pode dar nome a um bloco de codigo e usa-lo de novo.")
 	_atualizar_botao_grimorio()
 	_salvar_progresso()
+
+func _vizinhas(pos: Vector2i) -> Array:
+	return [pos + Vector2i(1, 0), pos + Vector2i(-1, 0), pos + Vector2i(0, 1), pos + Vector2i(0, -1)]
 
 func _nome_bioma(indice: int) -> String:
 	if indice == SALA_TUTORIAL:
@@ -907,11 +982,18 @@ func _spawnar_inimigos_sala():
 		return
 	
 	if sala_atual == SALA_FLORESTA:
-		gerenciador_inimigos.spawnar_inimigo(Vector2i(6, 1))
-		gerenciador_inimigos.spawnar_inimigo(Vector2i(7, 3))
-		gerenciador_inimigos.spawnar_inimigo(Vector2i(4, 6))
-		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(6, 5), 2)
-		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(1, 6), 2)
+		var normais = [Vector2i(6, 1), Vector2i(7, 3), Vector2i(4, 6)]
+		var escudos = [Vector2i(6, 5), Vector2i(1, 6)]
+		if mapa.variar_salas:
+			# RF008: as criaturas mudam de lugar a cada visita, longe do inicio e sem
+			# ficar ao lado do bau ou da porta (a arena, atras da porta, nao e sorteada).
+			var casas = mapa.sortear_casas(5, 4, _vizinhas(mapa.BAU_POS) + _vizinhas(mapa.PORTA_POS))
+			normais = casas.slice(0, 3)
+			escudos = casas.slice(3, 5)
+		for pos in normais:
+			gerenciador_inimigos.spawnar_inimigo(pos)
+		for pos in escudos:
+			gerenciador_inimigos.spawnar_inimigo_escudo(pos, 2)
 		gerenciador_inimigos.spawnar_boss_saida(Vector2i(10, 7), mapa.area_boss_saida_inicio(), mapa.area_boss_saida_tamanho())
 		return
 	
@@ -925,16 +1007,12 @@ func _spawnar_inimigos_sala():
 		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(4, 6), 3, "gelo")
 		return
 	
-	if sala_atual == 6:
-		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(7, 2), 4)
-		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(3, 4), 4)
-		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(5, 5), 2)
-		return
-	
-	if sala_atual == 7:
-		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(6, 1), 4)
-		gerenciador_inimigos.spawnar_inimigo_elemental(Vector2i(3, 5), 4)
-		gerenciador_inimigos.spawnar_inimigo_escudo(Vector2i(7, 4), 2)
+	if sala_atual == 6 or sala_atual == 7:
+		var fixas = {6: [Vector2i(7, 2), Vector2i(3, 4), Vector2i(5, 5)], 7: [Vector2i(6, 1), Vector2i(3, 5), Vector2i(7, 4)]}
+		var casas = mapa.sortear_casas(3, 3) if mapa.variar_salas else fixas[sala_atual]
+		gerenciador_inimigos.spawnar_inimigo_elemental(casas[0], 4)
+		gerenciador_inimigos.spawnar_inimigo_elemental(casas[1], 4)
+		gerenciador_inimigos.spawnar_inimigo_escudo(casas[2], 2)
 		return
 	
 	if sala_atual == SALA_CAVERNA_CHEFE:
@@ -1075,14 +1153,11 @@ func _on_chegou_na_saida():
 		_adicionar_saida("------------------------------")
 		return
 	
-	_adicionar_saida("[sala] Sala " + str(sala_atual + 1) + " concluida!")
-	_adicionar_saida("Carregando proxima sala...")
+	_adicionar_saida("[sala] Sala concluida! Carregando a proxima...")
 	_adicionar_saida("------------------------------")
 	trocando_sala = true
 	await get_tree().create_timer(0.8).timeout
 	_iniciar_sala(sala_atual + 1)
-	_adicionar_saida("[mapa] Sala " + str(sala_atual + 1))
-	_adicionar_saida("------------------------------")
 
 func _anunciar_fase_1():
 	_adicionar_saida("[fase 1] Clareira da Floresta")
@@ -1378,6 +1453,7 @@ func _relatar_eficiencia(sala: int):
 	var estrelas = 1 + (1 if dados.erros == 0 else 0) + (1 if dados.desperdicio == 0 else 0)
 	_eficiencia[sala].estrelas = estrelas
 	metricas.eficiencia(sala, estrelas, dados)
+	_mostrar_estrelas(estrelas, dados)
 	var marcas = "*".repeat(estrelas) + "-".repeat(3 - estrelas)
 	_adicionar_saida("[eficiencia] Sala concluida: [" + marcas + "] " + str(estrelas) + " de 3 estrelas")
 	var por_programa = float(dados.turnos) / dados.programas if dados.programas > 0 else 0.0
@@ -1782,7 +1858,7 @@ func _deve_contar_rodada(resposta_jogador: String, escolha_pendente_antes: bool 
 func _on_jogador_morreu():
 	ia.cancelar()
 	metricas.morte()
-	_adicionar_saida("[run] Run encerrada. Voce chegou ate a sala " + str(sala_atual + 1) + ".")
+	_adicionar_saida("[run] Run encerrada em " + _nome_bioma(sala_atual) + ".")
 	_adicionar_saida("Digite reiniciar() para voltar ao menu e comecar uma nova run. Os biomas e conceitos liberados continuam salvos.")
 	_adicionar_saida("------------------------------")
 

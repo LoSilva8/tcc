@@ -74,6 +74,9 @@ func _testar_sala_com_erros():
 	verificar("[eficiencia] Sala concluida: [*--] 1 de 3 estrelas" in texto, "Erro de sintaxe e acao desperdicada: 1 estrela.")
 	verificar("5 programas, 17 turnos (3.4 acoes por programa). Erros de Python: 1. Acoes desperdicadas: 1." in texto, "Relatorio conta programas, turnos, erros e desperdicio.")
 	verificar("teste o codigo por partes" in texto and "planeje para nenhuma acao falhar" in texto, "Relatorio diz como ganhar cada estrela que faltou.")
+	verificar(jogo.estrelas_panel.visible and jogo.estrelas_desenho.cheias == 1, "Painel de estrelas aparece com 1 estrela.")
+	verificar("Faltou: sem erros de Python e sem acoes desperdicadas" in jogo.estrelas_texto.text, "Painel diz o que faltou: " + jogo.estrelas_texto.text)
+	verificar("[sala] Sala concluida!" in texto and not ("Sala 14" in texto), "Mensagens nao mostram o numero interno da sala.")
 
 # ─── Sala 14: tudo certo de primeira: 3 estrelas ────────────────────
 
@@ -90,6 +93,7 @@ func _testar_sala_limpa():
 	)
 	verificar("[eficiencia] Sala concluida: [***] 3 de 3 estrelas" in saida, "Um programa limpo: 3 estrelas. " + saida)
 	verificar(not ("Proxima estrela" in saida), "Com 3 estrelas nao ha dica de melhora.")
+	verificar(jogo.estrelas_desenho.cheias == 3 and jogo.estrelas_texto.text == "3 de 3 estrelas", "Painel com 3 estrelas, sem 'faltou'.")
 
 	var resumo = _resumo(jogo.metricas.caminho_resumo())
 	verificar(resumo.get("13", {}).get("estrelas") == "1" and resumo.get("14", {}).get("estrelas") == "3", "Estrelas por sala vao para o resumo das metricas.")
