@@ -1,7 +1,8 @@
 extends Node2D
 
 # Ouroboros, a Serpente do Laco (chefe do Labirinto).
-# - So sente atacar(...) executado dentro de um while (laco com condicao de parada).
+# - So sente atacar(...) executado dentro de um while que saiba parar: condicao que
+#   le um sensor ou variavel, ou break no corpo. while True sem break nao conta.
 # - A cauda se renova (+1 segmento a cada 3 turnos): o numero de golpes nao e fixo.
 # - Se o programa terminar com ela viva, ela se fecha de novo (segmentos cheios).
 
@@ -31,13 +32,15 @@ func _aplicar_posicao():
 func pode_ocupar(pos: Vector2i) -> bool:
 	return pos == grid_pos
 
-func receber_dano(dano: int, usando_variavel: bool, em_while: bool) -> String:
+func receber_dano(dano: int, usando_variavel: bool, em_while: bool, laco_sem_fim: bool = false) -> String:
 	if not vivo:
 		return "O Ouroboros ja se rompeu."
 	if usando_variavel:
 		return "As escamas do Ouroboros refletem a magia. So golpes de atacar(...) dentro de um while o ferem."
 	if not em_while:
 		return "O Ouroboros se fecha a cada golpe solto. So um while, com condicao de parada, consegue parti-lo."
+	if laco_sem_fim:
+		return "O Ouroboros se alimenta de lacos sem fim: esse while esta sem condicao de parada (while True nunca fica falso).\nUse uma condicao que mude durante a luta, ex.: while inimigo_a_frente('direita'):"
 	segmentos = max(segmentos - max(dano, 1), 0)
 	if segmentos == 0:
 		vivo = false

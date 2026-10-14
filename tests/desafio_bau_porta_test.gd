@@ -87,10 +87,11 @@ func _testar():
 	jogo.mapa.porta_aberta = false
 	desafio.executar_codigo("if not tem_chave:\n    print('Buscar chave')\nelse:\n    abrir_porta()", 1)
 	verificar(jogo.mapa.porta_aberta, "Condicao invertida valida deve funcionar.")
-	var boss = jogo.gerenciador_inimigos.inimigos[Vector2i(10, 7)]
-	verificar(boss.hp == 6, "Boss deve manter 6 HP.")
+	var boss = jogo.gerenciador_inimigos.inimigos[jogo.mapa.GUARDIAO_POS]
+	verificar(boss.get_script() == load("res://chefe_floresta.gd") and boss.parte_atual() == "braco_pedra", "Guardiao de Runas comeca pelo Braco de Pedra.")
 	verificar(not boss.pode_ser_atacado_por(Vector2i(7, 5)), "Ataque externo deve continuar bloqueado.")
-	verificar(boss.pode_ocupar(Vector2i(12, 3)), "Boss deve ocupar a area ampliada.")
+	verificar(boss.pode_ser_atacado_por(Vector2i(9, 5)), "De dentro da arena o Guardiao pode ser atacado.")
+	verificar(not boss.pode_ocupar(Vector2i(12, 3)), "O Guardiao fica preso as raizes (nao anda pela arena).")
 	jogo.mapa.carregar_sala(1)
 	verificar(not jogo.mapa.bau_aberto and not jogo.mapa.porta_aberta, "Reinicio deve restaurar desafios.")
 	if "--visual" in OS.get_cmdline_user_args():

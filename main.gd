@@ -68,6 +68,8 @@ var menu: CanvasLayer
 var _sala_do_programa: int = -1
 # O final aparece quando termina o programa que derrotou o Arquimago.
 var _vitoria_pendente: bool = false
+# O Guardiao de Runas se apresenta na primeira vez que o mago pisa na arena.
+var _guardiao_anunciado: bool = false
 # Eficiencia do codigo por sala (US04): programas, turnos, erros e acoes
 # desperdicadas, avaliados em estrelas quando a sala e concluida.
 var _eficiencia: Dictionary = {}
@@ -733,7 +735,9 @@ func _texto_livro_magias() -> String:
 		linhas.append("  selos = 3 guarda um numero; abrir_bau(selos) usa esse numero.")
 		linhas.append("  if tem_chave == True: escolhe a acao com chave; else: trata a falta dela.")
 		linhas.append("  abrir_porta() e print('Preciso da chave') sao as acoes do desafio.")
-		linhas.append("  O Guardiao da Saida so recebe dano se voce estiver na arena marcada.")
+		linhas.append("  Guardiao de Runas: so recebe dano de dentro da arena, e cada runa le uma variavel:")
+		linhas.append("    numero: poder = 2  (a variavel da fireball vale o numero da runa)")
+		linhas.append("    palavra: feitico = 'luz'  (texto vai entre aspas; 2 e '2' sao tipos diferentes)")
 		linhas.append("")
 	
 	if _em_caverna():
@@ -755,6 +759,7 @@ func _texto_livro_magias() -> String:
 		linhas.append("  while condicao:  repete enquanto a condicao for verdadeira.")
 		linhas.append("  for item in lista:  repete uma vez para cada item.")
 		linhas.append("  break sai do laco; continue pula para a proxima volta.")
+		linhas.append("  while True: nunca fica falso; so para com break. O Ouroboros ignora lacos sem fim.")
 		linhas.append("  Sensores: caminho_livre('dir'), inimigo_a_frente('dir'), inimigos_restantes(), minha_vida(), minha_mana()")
 		if sala_atual == SALA_PONTE:
 			linhas.append("  passos guarda o caminho da ponte (uma lista de direcoes).")
@@ -774,7 +779,7 @@ func _texto_livro_magias() -> String:
 		if sala_atual == SALA_SELO:
 			linhas.append("  abrir_selo()  o Selo testa poder_da_runa(runa) com varias runas.")
 		if sala_atual == SALA_ARQUIMAGO:
-			linhas.append("  Arquimago: so cai com uma funcao que decide com if, chamada dentro de um laco.")
+			linhas.append("  Arquimago: so cai com uma funcao que decide com if, chamada dentro de um laco que saiba parar.")
 			linhas.append("  Sensores: inimigo_a_frente('dir') e inimigos_restantes().")
 		linhas.append("")
 	if not tutorial.esta_ativo() and not grimorio_desbloqueado:
@@ -907,6 +912,7 @@ func _iniciar_sala(indice: int):
 		_relatar_eficiencia(_sala_avaliada)
 	_sala_avaliada = indice
 	sala_atual = indice
+	_guardiao_anunciado = false
 	metricas.entrar_sala(indice, _nome_bioma(indice))
 	mapa.carregar_sala(indice)
 	if desafios:
@@ -953,10 +959,7 @@ func _iniciar_sala(indice: int):
 	_spawnar_inimigos_sala()
 	
 	if indice == 4:
-		_adicionar_saida("[chefe] O Guardiao de Runas bloqueia a saida do bioma!")
-		_adicionar_saida("Cada parte exige uma variavel com nome especifico (veja acima dele).")
-		_adicionar_saida("Use: nome = valor  e depois  fireball(nome, 'direcao')")
-		_adicionar_saida("------------------------------")
+		_anunciar_guardiao()
 	
 	_atualizar_desbloqueios(indice)
 	
@@ -994,7 +997,7 @@ func _spawnar_inimigos_sala():
 			gerenciador_inimigos.spawnar_inimigo(pos)
 		for pos in escudos:
 			gerenciador_inimigos.spawnar_inimigo_escudo(pos, 2)
-		gerenciador_inimigos.spawnar_boss_saida(Vector2i(10, 7), mapa.area_boss_saida_inicio(), mapa.area_boss_saida_tamanho())
+		gerenciador_inimigos.spawnar_chefe(mapa.GUARDIAO_POS, mapa.area_boss_saida_inicio(), mapa.area_boss_saida_tamanho())
 		return
 	
 	if sala_atual == 4:
@@ -1089,9 +1092,9 @@ func _on_chegou_na_saida():
 		return
 	
 	if sala_atual == SALA_FLORESTA:
-		if gerenciador_inimigos.boss_saida_vivo():
-			_adicionar_saida("[boss] O Guardiao da Saida ainda protege a passagem.")
-			_adicionar_saida("Entre na area marcada e derrote o boss antes de sair.")
+		if gerenciador_inimigos.chefe_vivo():
+			_adicionar_saida("[chefe] O Guardiao de Runas ainda protege a passagem.")
+			_adicionar_saida("Entre na arena e quebre as tres runas dele antes de sair.")
 			_adicionar_saida("------------------------------")
 			return
 		
@@ -1164,11 +1167,21 @@ func _anunciar_fase_1():
 	_adicionar_saida("Procure o bau dourado no abrigo ao sul. A chave abre a porta azul que leva ao boss.")
 	_adicionar_saida("Ao lado de cada objeto, uma dica mostra o comando: desafio(bau) ou desafio(porta).")
 	_adicionar_saida("Aprenda a guardar um numero e a decidir com if/else. Ha exemplos e dicas, sem perder turnos nas tentativas.")
-	_adicionar_saida("Objetivo: derrote os inimigos, venca o Guardiao da Saida e chegue a saida verde.")
+	_adicionar_saida("Objetivo: derrote os inimigos, venca o Guardiao de Runas e chegue a saida verde.")
 	_adicionar_saida("Cada comando valido e um turno. Depois dele, os inimigos tambem agem.")
 	_adicionar_saida("O boss so pode ser atacado dentro da area marcada perto da saida.")
 	_adicionar_saida("Fireball custa 2 MP + o valor da variavel usada como poder.")
 	_adicionar_saida("Use mover('direcao'), atacar('direcao') e fireball(poder, 'direcao').")
+	_adicionar_saida("------------------------------")
+
+# Guardiao de Runas (Tabela 11, Floresta: variaveis e sintaxe basica; RA02: tipos).
+func _anunciar_guardiao():
+	_adicionar_saida("[chefe] O Guardiao de Runas desperta, preso as raizes da arena!")
+	_adicionar_saida("Ele nao sai do lugar, mas cada parte dele e uma runa que le as suas variaveis (veja embaixo dele).")
+	_adicionar_saida("Braco de Pedra: a variavel da fireball precisa VALER o numero da runa. Quando o numero mudar, troque o valor: poder = 2")
+	_adicionar_saida("Braco de Cristal: a variavel feitico precisa guardar a palavra da runa como TEXTO, entre aspas: feitico = 'luz'")
+	_adicionar_saida("Nucleo: pede o numero e a palavra no mesmo golpe.")
+	_adicionar_saida("Ele esmaga quem chega ao lado, e a cada 3 turnos as raizes ferem quem esta na arena. Fora dela voce recupera mana com calma.")
 	_adicionar_saida("------------------------------")
 
 func _concluir_fase_1():
@@ -1244,7 +1257,7 @@ func _anunciar_sala_labirinto(indice: int):
 			_adicionar_saida("[chefe] Ouroboros, a Serpente do Laco, desperta!")
 			_adicionar_saida("Magia reflete nas escamas: so atacar(...) o fere, e so de dentro de um while.")
 			_adicionar_saida("A cauda se renova com o tempo: ninguem sabe quantos golpes serao necessarios.")
-			_adicionar_saida("Se o seu laco terminar antes dele, o Ouroboros se fecha de novo.")
+			_adicionar_saida("Se o seu laco terminar antes dele, o Ouroboros se fecha de novo. E ele engole lacos sem fim: while True nao o fere.")
 	_adicionar_saida("------------------------------")
 
 func _concluir_fase_3():
@@ -1287,7 +1300,7 @@ func _anunciar_sala_torre(indice: int):
 		SALA_ARQUIMAGO:
 			_adicionar_saida("[chefe] O Arquimago da Corrupcao desperta no nucleo da Grande Biblioteca!")
 			_adicionar_saida("A cada turno ele salta para outro dos quatro pedestais ao seu redor, e desfaz golpes soltos.")
-			_adicionar_saida("So uma magia completa o fere: uma funcao (def) que decide com if onde ele esta, chamada dentro de um laco.")
+			_adicionar_saida("So uma magia completa o fere: uma funcao (def) que decide com if onde ele esta, chamada dentro de um laco que saiba parar (while True nao serve).")
 			_adicionar_saida("Sensores: inimigo_a_frente('cima') diz se ele esta naquela direcao; inimigos_restantes() diz se ele ainda esta de pe.")
 			_adicionar_saida("Se o programa terminar com ele de pe, os selos se refazem. A cada 3 turnos ele lanca corrupcao.")
 	_adicionar_saida("------------------------------")
@@ -1361,7 +1374,7 @@ func _topico_dica() -> String:
 				return "floresta_bau"
 			if not mapa.porta_aberta:
 				return "floresta_porta"
-			if gerenciador_inimigos.boss_saida_vivo():
+			if gerenciador_inimigos.chefe_vivo():
 				return "floresta_guardiao"
 			return "floresta_inimigos" if vivos else "saida"
 		SALA_CAVERNA:
@@ -1746,6 +1759,11 @@ func _pedir_feedback_erro(codigo: String, resposta: String):
 func _processar_turno_pos_jogador(resposta_jogador: String, escolha_pendente_antes: bool = false):
 	if not _deve_contar_rodada(resposta_jogador, escolha_pendente_antes):
 		return
+	
+	if sala_atual == SALA_FLORESTA and not _guardiao_anunciado and gerenciador_inimigos.chefe_vivo() \
+			and Rect2i(mapa.area_boss_saida_inicio(), mapa.area_boss_saida_tamanho()).has_point(player.grid_pos):
+		_guardiao_anunciado = true
+		_anunciar_guardiao()
 	
 	if _deve_processar_turno_inimigos():
 		var resposta_inimigos = gerenciador_inimigos.processar_turno_inimigos()

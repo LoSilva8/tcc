@@ -54,7 +54,7 @@ func _testar_floresta():
 		var escudos = _contar("res://inimigo_escudo.gd")
 		var criaturas = normais + escudos
 		verificar(normais.size() == 3 and escudos.size() == 2, "Floresta sempre tem 3 criaturas comuns e 2 de escudo.")
-		verificar(_contar("res://boss_saida.gd") == [Vector2i(10, 7)], "O Guardiao da Saida continua na arena.")
+		verificar(_contar("res://chefe_floresta.gd") == [mapa.GUARDIAO_POS], "O Guardiao de Runas continua na arena.")
 		var dist = _distancias()
 		for pos in criaturas:
 			verificar(dist.get(pos, 0) >= 4, "Criatura a pelo menos 4 passos do inicio: " + str(pos))

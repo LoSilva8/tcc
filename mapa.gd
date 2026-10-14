@@ -22,6 +22,8 @@ const CAVE_WALL_DARK = Color(0.09, 0.06, 0.14)
 const CAVE_WALL_LIGHT = Color(0.62, 0.4, 0.92, 0.5)
 const BOSS_SAIDA_AREA_INICIO = Vector2i(9, 3)
 const BOSS_SAIDA_AREA_TAMANHO = Vector2i(4, 5)
+# Guardiao de Runas, preso as raizes no meio da arena (chefe da Floresta).
+const GUARDIAO_POS = Vector2i(11, 5)
 const BAU_POS = Vector2i(3, 7)
 const PORTA_POS = Vector2i(8, 5)
 const COMPORTA_POS = Vector2i(7, 4)

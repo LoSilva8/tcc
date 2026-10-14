@@ -5,7 +5,6 @@ const InimigoEscudoCena = preload("res://inimigo_escudo.tscn")
 const InimigoElementalCena = preload("res://inimigo_elemental.tscn")
 const ChefeFlorestaCena = preload("res://chefe_floresta.tscn")
 const ChefeCavernaCena = preload("res://chefe_caverna.tscn")
-const BossSaidaCena = preload("res://boss_saida.tscn")
 const EloCena = preload("res://elo.tscn")
 const OuroborosCena = preload("res://ouroboros.tscn")
 const SentinelaCena = preload("res://sentinela.tscn")
@@ -57,7 +56,8 @@ func spawnar_inimigo_elemental(pos: Vector2i, hp_inicial: int = 4, elemento: Str
 	inimigo.inicializar(pos, hp_inicial, elemento)
 	inimigos[pos] = inimigo
 
-func spawnar_chefe(pos: Vector2i):
+# Guardiao de Runas. Com arena (Floresta), so pode ser atacado de dentro dela.
+func spawnar_chefe(pos: Vector2i, area_inicio: Vector2i = Vector2i.ZERO, area_tamanho: Vector2i = Vector2i.ZERO):
 	if pos in inimigos:
 		return
 	if mapa and mapa.eh_parede(pos):
@@ -65,7 +65,7 @@ func spawnar_chefe(pos: Vector2i):
 
 	var chefe = ChefeFlorestaCena.instantiate()
 	add_child(chefe)
-	chefe.inicializar(pos)
+	chefe.inicializar(pos, area_inicio, area_tamanho)
 	chefe.chefe_derrotado.connect(func(): emit_signal("chefe_derrotado"))
 	inimigos[pos] = chefe
 
@@ -146,22 +146,15 @@ func _laco_ativo(so_while: bool) -> bool:
 		return false
 	return player.interpretador.dentro_de_while() if so_while else player.interpretador.dentro_de_laco()
 
+# Golpe vindo de dentro de um while sem fim (while True sem break).
+func _laco_sem_fim() -> bool:
+	return player != null and player.interpretador != null and player.interpretador.dentro_de_laco_sem_fim()
+
 func _funcao_ativa() -> bool:
 	return player != null and player.interpretador != null and player.interpretador.dentro_de_funcao()
 
 func _if_ativo() -> bool:
 	return player != null and player.interpretador != null and player.interpretador.dentro_de_if()
-
-func spawnar_boss_saida(pos: Vector2i, area_inicio: Vector2i, area_tamanho: Vector2i):
-	if pos in inimigos:
-		return
-	if mapa and mapa.eh_parede(pos):
-		return
-
-	var boss = BossSaidaCena.instantiate()
-	add_child(boss)
-	boss.inicializar(pos, area_inicio, area_tamanho)
-	inimigos[pos] = boss
 
 func chefe_vivo() -> bool:
 	for pos in inimigos:
@@ -184,13 +177,6 @@ func sinal_chefe_caverna() -> String:
 			return i.sinal_atual
 	return ""
 
-func boss_saida_vivo() -> bool:
-	for pos in inimigos:
-		var i = inimigos[pos]
-		if i.has_method("eh_boss_saida") and i.eh_boss_saida() and i.vivo:
-			return true
-	return false
-
 func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false, nome_variavel: String = "", encadeado: bool = false) -> String:
 	if pos in inimigos:
 		var inimigo = inimigos[pos]
@@ -204,9 +190,11 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 
 		if inimigo.get_script() == preload("res://chefe_floresta.gd"):
 			if not usando_variavel:
-				resultado = "Ataques comuns nao afetam o Guardiao de Runas.\nUse fireball(variavel, 'direcao') com o nome certo."
+				resultado = "Ataques comuns nao afetam o Guardiao de Runas.\nEle so sente fireball(variavel, 'direcao') e le o que as suas variaveis guardam."
 			else:
-				resultado = inimigo.receber_dano(dano, nome_variavel)
+				var it = player.interpretador if player else null
+				var tem_feitico = it != null and it.tem_variavel("feitico")
+				resultado = inimigo.receber_dano(nome_variavel, it.ler_variavel(nome_variavel) if it else dano, tem_feitico, it.ler_variavel("feitico") if tem_feitico else null)
 		elif inimigo.get_script() == preload("res://chefe_caverna.gd"):
 			if not usando_variavel:
 				resultado = "Ataques comuns nao ecoam no Oraculo Bifurcado.\nUse fireball(variavel, 'direcao') com o elemento certo."
@@ -215,9 +203,9 @@ func atacar_posicao(pos: Vector2i, dano: int = 1, usando_variavel: bool = false,
 		elif inimigo.get_script() == preload("res://elo.gd"):
 			resultado = inimigo.receber_dano(dano, _laco_ativo(false))
 		elif inimigo.get_script() == preload("res://ouroboros.gd"):
-			resultado = inimigo.receber_dano(dano, usando_variavel, _laco_ativo(true))
+			resultado = inimigo.receber_dano(dano, usando_variavel, _laco_ativo(true), _laco_sem_fim())
 		elif inimigo.get_script() == preload("res://arquimago.gd"):
-			resultado = inimigo.receber_dano(dano, _funcao_ativa(), _laco_ativo(false), _if_ativo())
+			resultado = inimigo.receber_dano(dano, _funcao_ativa(), _laco_ativo(false), _if_ativo(), _laco_sem_fim())
 		elif inimigo.get_script() == preload("res://sentinela.gd"):
 			var interpretador = player.interpretador if player else null
 			resultado = inimigo.receber_dano(dano, _funcao_ativa(), interpretador != null and interpretador.funcao_com_parametros())
@@ -305,11 +293,7 @@ func _inimigo_ataca(inimigo: Node) -> String:
 	return "[inimigo] " + _nome_inimigo(inimigo) + " atacou. " + resposta
 
 func _dano_inimigo(inimigo: Node) -> int:
-	if inimigo.get_script() == preload("res://chefe_floresta.gd"):
-		return 2
 	if inimigo.get_script() == preload("res://chefe_caverna.gd"):
-		return 2
-	if inimigo.has_method("eh_boss_saida") and inimigo.eh_boss_saida():
 		return 2
 	return 1
 
@@ -330,8 +314,6 @@ func _nome_inimigo(inimigo: Node) -> String:
 		return "Sentinela Gemea" if inimigo.exige_parametro else "Sentinela Runica"
 	if inimigo.get_script() == preload("res://arquimago.gd"):
 		return "Arquimago da Corrupcao"
-	if inimigo.has_method("eh_boss_saida") and inimigo.eh_boss_saida():
-		return "Guardiao da Saida"
 	return "Sentinela da Floresta"
 
 func _mover_inimigo(pos_atual: Vector2i, nova_pos: Vector2i, inimigo: Node):

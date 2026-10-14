@@ -257,6 +257,9 @@ func _testar_arquimago():
 	verificar("Selo de corrupcao partido" in saida and "se refizeram" in saida and chefe.selos == 6, "Laco que para antes dele: os selos se refazem.")
 
 	p.hp = p.hp_max
+	saida = await _saida_de(func(): await jogo._executar_programa("while True:\n    golpe()"))
+	verificar("sem condicao de parada" in saida and "Laco interrompido" in saida and chefe.selos == 6, "while True sem break nao fere o Arquimago e para apos 3 recusas.")
+	p.hp = p.hp_max
 	saida = await _saida_de(func(): await jogo._executar_programa("while inimigos_restantes() > 0:\n    golpe()"))
 	verificar(not chefe.vivo and "ARQUIMAGO DA CORRUPCAO CAIU" in saida, "Funcao com if chamada num while derrota o Arquimago.")
 	verificar("O Arquimago lanca corrupcao" in saida and p.vivo, "Ele lanca corrupcao, mas a luta e vencivel.")

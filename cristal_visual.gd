@@ -1,7 +1,7 @@
 extends Node2D
 
 # Visual das criaturas de cristal das Cavernas Condicionais.
-# Mesmo padrao de enemy_visual.gd / boss_saida_visual.gd: desenho via _draw().
+# Mesmo padrao de enemy_visual.gd / guardiao_visual.gd: desenho via _draw().
 
 @export var escala: float = 1.0
 @export var chefe: bool = false

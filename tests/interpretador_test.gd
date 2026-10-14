@@ -68,11 +68,30 @@ func _testar():
 	verificar(not it.executando, "Interpretador libera a execucao depois de interromper.")
 	verificar("range() muito grande" in await rodar("for i in range(1000):\n    pass"), "range gigante e recusado.")
 
+	# --- Laco sem fim (Tabela 11: condicao de parada dinamica; chefes recusam) ---
+	verificar(_sem_fim("while True:\n    atacar('direita')"), "while True sem break e laco sem fim.")
+	verificar(_sem_fim("while not False:\n    atacar('direita')") and _sem_fim("while 1 < 2:\n    atacar('direita')"), "Condicao constante disfarcada tambem e laco sem fim.")
+	verificar(_sem_fim("while True:\n    for i in range(3):\n        break"), "break de um for interno nao para o while.")
+	verificar(not _sem_fim("while True:\n    if minha_vida() < 3:\n        break\n    atacar('direita')"), "while True com break tem parada.")
+	verificar(not _sem_fim("while inimigo_a_frente('direita'):\n    atacar('direita')") and not _sem_fim("while n < 3:\n    n += 1"), "Condicao que le sensor ou variavel tem parada.")
+	verificar(not _sem_fim("def f():\n    while True:\n        return 1"), "return dentro da funcao tambem para o while.")
+
 	await _testar_funcoes()
 
 	it.free()
 	print("Interpretador: ", falhas, " falhas.")
 	quit(1 if falhas else 0)
+
+# Compila o codigo e diz se o primeiro while (ou o da primeira funcao) e sem fim.
+func _sem_fim(codigo: String) -> bool:
+	it._preparar_execucao()
+	it.lacos_liberados = true
+	var arvore = it._compilar(codigo)
+	if it._erro != "" or arvore.is_empty():
+		push_error("Nao compilou: " + codigo + " " + it._erro)
+		return false
+	var laco = arvore[0].corpo[0] if arvore[0].t == "def" else arvore[0]
+	return it._expressao_constante(laco.cond) and not it._tem_saida(laco.corpo)
 
 # --- Funcoes (Torre das Funcoes) ---
 func _testar_funcoes():

@@ -65,6 +65,10 @@ var _interrupcao: String = ""
 var _profundidade_cadeia: int = 0
 var _profundidade_laco: int = 0
 var _profundidade_while: int = 0
+# Lacos sem fim em andamento (Tabela 11: "condicao de parada dinamica"): while cuja
+# condicao nunca muda (while True) e sem break/return no corpo. Ele so para quando
+# as acoes comecam a falhar, entao os chefes recusam golpes vindos de dentro dele.
+var _lacos_sem_fim: int = 0
 var _profundidade_if: int = 0
 var _cancelar: bool = false
 var _multilinha: bool = false
@@ -111,6 +115,9 @@ func dentro_de_laco() -> bool:
 
 func dentro_de_while() -> bool:
 	return _profundidade_while > 0
+
+func dentro_de_laco_sem_fim() -> bool:
+	return _lacos_sem_fim > 0
 
 func dentro_de_if() -> bool:
 	return _profundidade_if > 0
@@ -163,6 +170,7 @@ func _preparar_execucao():
 	_profundidade_cadeia = 0
 	_profundidade_laco = 0
 	_profundidade_while = 0
+	_lacos_sem_fim = 0
 	_profundidade_if = 0
 	_cancelar = false
 	_locais = []
@@ -777,8 +785,11 @@ func _exec_if(s: Dictionary) -> void:
 		_profundidade_cadeia -= 1
 
 func _exec_while(s: Dictionary) -> void:
+	var sem_fim = _expressao_constante(s.cond) and not _tem_saida(s.corpo)
 	_profundidade_laco += 1
 	_profundidade_while += 1
+	if sem_fim:
+		_lacos_sem_fim += 1
 	while true:
 		var cond = await _valor(s.cond)
 		if _sinal != "":
@@ -799,6 +810,39 @@ func _exec_while(s: Dictionary) -> void:
 			break
 	_profundidade_laco -= 1
 	_profundidade_while -= 1
+	if sem_fim:
+		_lacos_sem_fim -= 1
+
+# Condicao que nunca muda: nao le variavel nem chama nada (True, 1 == 1, not False).
+func _expressao_constante(no) -> bool:
+	if typeof(no) == TYPE_DICTIONARY:
+		if no.get("t") in ["nome", "chamada"]:
+			return false
+		for v in no.values():
+			if not _expressao_constante(v):
+				return false
+	elif typeof(no) == TYPE_ARRAY:
+		for v in no:
+			if not _expressao_constante(v):
+				return false
+	return true
+
+# break ou return no corpo do laco (fora de lacos e funcoes internas) tambem o fazem parar.
+func _tem_saida(no) -> bool:
+	if typeof(no) == TYPE_ARRAY:
+		for v in no:
+			if _tem_saida(v):
+				return true
+	elif typeof(no) == TYPE_DICTIONARY:
+		var t = no.get("t", "")
+		if t == "break" or t == "return":
+			return true
+		if t in ["while", "for", "def"]:
+			return false
+		for v in no.values():
+			if _tem_saida(v):
+				return true
+	return false
 
 func _exec_for(s: Dictionary) -> void:
 	var colecao = await _valor(s.iter)
@@ -914,7 +958,8 @@ func _acao(nome: String, args: Array, linha: int) -> void:
 
 func _acao_falhou(resposta: String) -> bool:
 	var r = resposta.to_lower()
-	for marcador in ["bloqueado", "ha uma parede", "nenhum inimigo", "mana insuficiente", "direcao invalida", "subiu de nivel"]:
+	# "sem condicao de parada": chefe recusou golpe de while True; 3 seguidas param o laco.
+	for marcador in ["bloqueado", "ha uma parede", "nenhum inimigo", "mana insuficiente", "direcao invalida", "subiu de nivel", "sem condicao de parada"]:
 		if marcador in r:
 			return true
 	return false

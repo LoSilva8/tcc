@@ -221,6 +221,9 @@ func _fireball_com_variavel(nome_variavel: String, direcao_arg: String) -> Strin
 	
 	var poder = interpretador.ler_variavel(nome_variavel)
 	if not (typeof(poder) == TYPE_INT or typeof(poder) == TYPE_FLOAT):
+		# RA02 (tipos de dados): '3' entre aspas e texto, 3 sem aspas e numero.
+		if typeof(poder) == TYPE_STRING:
+			return "Fireball precisa de uma variavel numerica.\n" + nome_variavel + " guarda o texto '" + poder + "' (entre aspas). Numero vai sem aspas: " + nome_variavel + " = 3"
 		return "Fireball precisa de uma variavel numerica.\nExemplo: poder = 3"
 	var custo_mana = _calcular_custo_fireball(poder)
 	if mana < custo_mana:

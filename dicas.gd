@@ -18,9 +18,9 @@ const DICAS = {
 		"Exemplo, com as acoes recuadas 4 espacos:\nif tem_chave == True:\n    abrir_porta()\nelse:\n    print('Preciso da chave')",
 	],
 	"floresta_guardiao": [
-		"O Guardiao da Saida so pode ser atacado de dentro da area marcada perto da saida.",
-		"Entre na area marcada, fique na mesma linha ou coluna dele e ataque na direcao dele.",
-		"Exemplo, com ele a sua direita: poder = 3 e depois fireball(poder, 'direita'). Fireball custa 2 + poder de mana.",
+		"O Guardiao de Runas so pode ser atacado de dentro da arena, e cada runa dele le uma variavel sua. Embaixo dele esta escrito o que a runa da vez pede.",
+		"Runa do numero: a variavel da fireball precisa valer aquele numero (troque o valor quando ele mudar). Runa da palavra: a variavel feitico precisa guardar a palavra como texto, entre aspas. O Nucleo pede as duas.",
+		"Exemplo, uma linha de cada vez, com o numero 2, a palavra 'luz' e o Guardiao a sua direita:\npoder = 2\nfeitico = 'luz'\nfireball(poder, 'direita')",
 	],
 	"floresta_inimigos": [
 		"A saida so libera quando todas as criaturas da floresta forem derrotadas.",
@@ -58,7 +58,7 @@ const DICAS = {
 		"Exemplo:\nfor passo in passos:\n    mover(passo)",
 	],
 	"ouroboros": [
-		"A serpente so sente atacar(...) dentro de um while. Magia reflete, e golpes soltos ou de for nao contam.",
+		"A serpente so sente atacar(...) dentro de um while que saiba parar. Magia reflete, e golpes soltos, de for ou de while True nao contam.",
 		"Fique ao lado dela e repita o ataque enquanto ela estiver ali. Se o laco terminar antes dela cair, ela se fecha de novo.",
 		"Exemplo, com ela a sua direita:\nwhile inimigo_a_frente('direita'):\n    atacar('direita')",
 	],
@@ -102,7 +102,8 @@ const FALHAS_DE_REGRA = [
 	"desfaz golpes soltos", "se recompos", "veio as cegas", "selos se refizeram",
 	"nao afeta o Eco", "atravessam o Eco", "escudo magico bloqueou",
 	"nao e o elemento certo", "nao ecoam no Oraculo", "ignora respostas isoladas", "protegido pela arena",
-	"nao sustenta passos soltos", "ela se desfez",
+	"nao sustenta passos soltos", "ela se desfez", "sem condicao de parada",
+	"nao afetam o Guardiao", "pede o numero", "pede a palavra", "pede um TEXTO", "so baixa a guarda",
 ]
 
 var _niveis: Dictionary = {}  # topico -> ultimo degrau mostrado (0 a 3)

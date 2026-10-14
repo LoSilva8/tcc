@@ -86,7 +86,7 @@ func _testar_situacao_da_sala():
 	jogo.mapa.bau_aberto = true
 	verificar("[dica 1/3] Voce ja tem a chave" in await _dica(), "Bau aberto: a dica passa para a porta, a partir do 1o degrau.")
 	jogo.mapa.porta_aberta = true
-	verificar("Guardiao da Saida" in await _dica(), "Porta aberta: a dica passa para o Guardiao.")
+	verificar("Guardiao de Runas" in await _dica(), "Porta aberta: a dica passa para o Guardiao.")
 	await jogo._iniciar_sala(jogo.SALA_CAVERNA)
 	verificar("comporta" in await _dica(), "Cavernas: dica da comporta.")
 
@@ -137,7 +137,7 @@ func _testar_cobertura():
 # Os exemplos do 3o degrau sao Python que o interpretador do jogo aceita.
 func _testar_exemplos_compilam():
 	var it = load("res://interpretador.gd").new()
-	for topico in ["floresta_bau", "floresta_porta", "caverna_comporta", "oraculo", "nevoa", "elos", "ponte", "ouroboros", "gemeas", "selo", "arquimago"]:
+	for topico in ["floresta_bau", "floresta_porta", "floresta_guardiao", "caverna_comporta", "oraculo", "nevoa", "elos", "ponte", "ouroboros", "gemeas", "selo", "arquimago"]:
 		var exemplo: String = Dicas.DICAS[topico][2]
 		var codigo = exemplo.substr(exemplo.find("\n") + 1)
 		it._preparar_execucao()

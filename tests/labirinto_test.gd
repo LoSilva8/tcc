@@ -150,6 +150,18 @@ func _testar_ouroboros():
 	var saida_while = jogo.output_label.text.substr(antes)
 	verificar("Segmento partido" in saida_while, "Golpes dentro do while ferem o Ouroboros.")
 	verificar("se fechou de novo" in saida_while and serpente.segmentos == 8, "while que para antes da serpente cair: ela se regenera.")
+	# Tabela 11: condicao de parada dinamica. while True so parava porque os golpes
+	# comecavam a falhar depois que ela caia; agora ela recusa lacos sem fim.
+	p.hp = p.hp_max
+	antes = jogo.output_label.text.length()
+	await jogo._executar_programa("while True:\n    atacar('direita')")
+	var saida_sem_fim = jogo.output_label.text.substr(antes)
+	verificar("sem condicao de parada" in saida_sem_fim and not ("Segmento partido" in saida_sem_fim) and serpente.segmentos == 8, "while True sem break nao fere o Ouroboros.")
+	verificar("Laco interrompido" in saida_sem_fim and p.vivo, "Tres recusas seguidas param o while True (o mago nao apanha ate morrer).")
+	serpente.turnos = 0
+	antes = jogo.output_label.text.length()
+	await jogo._executar_programa("n = 0\nwhile True:\n    atacar('direita')\n    n += 1\n    if n == 1:\n        break")
+	verificar("Segmento partido" in jogo.output_label.text.substr(antes), "while True com break tem condicao de parada: o golpe conta.")
 	p.grid_pos = Vector2i(7, 4)
 	await jogo._on_comando_enviado("mover('baixo')")
 	verificar("ainda fecha a passagem" in jogo.output_label.text and not jogo.fase_3_concluida, "Saida bloqueada com o Ouroboros vivo.")

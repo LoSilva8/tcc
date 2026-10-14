@@ -36,13 +36,15 @@ func pode_ocupar(pos: Vector2i) -> bool:
 	return pos in pedestais
 
 # Cada golpe da magia completa parte 1 selo, qualquer que seja o dano.
-func receber_dano(_dano: int, em_funcao: bool, em_laco: bool, em_if: bool) -> String:
+func receber_dano(_dano: int, em_funcao: bool, em_laco: bool, em_if: bool, laco_sem_fim: bool = false) -> String:
 	if not vivo:
 		return "O Arquimago ja caiu."
 	if not em_funcao:
 		return "O Arquimago desfaz golpes soltos. So uma magia completa o fere: uma funcao (def) que decide com if onde ele esta, chamada dentro de um laco."
 	if not em_laco:
 		return "A funcao acertou, mas o Arquimago se recompos: chame-a dentro de um laco (while) que so pare quando ele cair."
+	if laco_sem_fim:
+		return "O Arquimago se alimenta de lacos sem fim: esse laco esta sem condicao de parada (while True nunca fica falso).\nUse uma condicao que mude durante a luta, ex.: while inimigos_restantes() > 0:"
 	if not em_if:
 		return "O golpe veio as cegas e o Arquimago o desviou. Dentro da funcao, decida com if onde ele esta: inimigo_a_frente('direcao')."
 	selos -= 1
